@@ -100,21 +100,18 @@ MakeBackup(T sourcePath, U targetPath)
 template<typename T, typename U>
 inline std::future<void> ModMerger::UnpackAsync(T&& sourcePath, U&& targetPath)
 {
-	std::shared_ptr<std::promise<void>> threadPromise{ std::make_shared<std::promise<void>>() };
-	std::future<void> threadFuture{ threadPromise->get_future() };
+	//std::shared_ptr<std::promise<void>> threadPromise{ std::make_shared<std::promise<void>>() };
+	//std::future<void> threadFuture{ threadPromise->get_future() };
 
 	auto copyAndUnpack = [lsourcePath = std::forward<T>(sourcePath), ltargetPath = std::forward<U>(targetPath),
-		threadPromise, arctool = std::string_view(m_ARCToolScriptPath)]()
+		arctool = std::string_view(m_ARCToolScriptPath)]() -> void
 		{
 			MakeBackup(lsourcePath, ltargetPath);
 			const std::filesystem::path newBackupFilePath{ std::filesystem::path(ltargetPath) / std::filesystem::path(lsourcePath).filename() };
 			CallARCTool(newBackupFilePath.string(), arctool);
-			threadPromise->set_value();
 		};
 
-	m_ThreadPool->enqueue_detach(copyAndUnpack);
-
-	return threadFuture;
+	return m_ThreadPool->enqueue(copyAndUnpack);
 }
 
 template<typename T, typename U>
