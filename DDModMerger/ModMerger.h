@@ -48,11 +48,6 @@ public:
 
 private:
 
-	//std::future<std::vector<std::string>> CompareDirectoriesAsync(
-	//	std::string_view baseSource,
-	//	std::string_view pathToSource,
-	//	std::string_view pathToTarget);
-
 	template<typename T, typename U>
 	std::future<void> UnpackAsync(T&& sourcePath, U&& targetPath);
 	std::future<void> UnpackAsync(std::string_view sourcePath, std::string_view targetPath);

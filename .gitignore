@@ -394,6 +394,8 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
+openssl-3
+
 # JetBrains Rider
 <<<<<<< HEAD
 *.sln.iml
