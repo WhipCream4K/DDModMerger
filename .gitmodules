@@ -1,0 +1,9 @@
+[submodule "thread-pool"]
+	path = thread-pool
+	url = https://github.com/DeveloperPaul123/thread-pool.git
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json.git
+[submodule "imgui"]
+	path = imgui
+	url = https://github.com/ocornut/imgui.git
