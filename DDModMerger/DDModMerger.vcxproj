@@ -175,19 +175,25 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BlackBoard.cpp" />
     <ClCompile Include="ContentManager.cpp" />
     <ClCompile Include="CVarReader.cpp" />
     <ClCompile Include="DDModMerger.cpp" />
     <ClCompile Include="DirTreeCreator.cpp" />
+    <ClCompile Include="LFQueue.cpp" />
     <ClCompile Include="ModMerger.cpp" />
+    <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BlackBoard.h" />
     <ClInclude Include="ContentManager.h" />
     <ClInclude Include="CVarReader.h" />
     <ClInclude Include="DirTreeCreator.h" />
     <ClInclude Include="EnvironmentVariables.h" />
+    <ClInclude Include="LFQueue.h" />
     <ClInclude Include="ModMerger.h" />
     <ClInclude Include="Types.h" />
+    <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\glfw_vs\glfw_vs.vcxproj">

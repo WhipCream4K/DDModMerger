@@ -10,6 +10,8 @@
 #include "ContentManager.h"
 #include "Types.h"
 #include "thread_pool/thread_pool.h"
+#include "CVarReader.h"
+#include "Blackboard.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
@@ -29,15 +31,8 @@ enum UserContextVariable
 	NewThreadCount,
 	MergeConfirmation,
 	Refresh,
+	ModsOverwriteSelection
 };
-
-using UserVariable = std::variant<bool, int>;
-
-template<typename T>
-T& Get(UserVariable& val)
-{
-	return std::get<T>(val);
-}
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -54,202 +49,215 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
 int main(int argc, char* argv[])
 {
-    // Setup window
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit())
-        return -1;
+	CVarReader cvReader{};
+	cvReader.ParseArguments(argc, argv);
 
-    // GL 3.0 + GLSL 130
-    const std::string glslVersion{ "#version 130" };
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+	if (!cvReader.CheckArgs())
+		return -1;
 
-    const int windowWidth{ 640 };
-    const int windowHeight{ 480 };
+	// Setup window
+	glfwSetErrorCallback(glfw_error_callback);
+	if (!glfwInit())
+		return -1;
 
-    // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "DDModMerger", NULL, NULL);
-    if (window == NULL)
-        return -1;
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
+	// GL 3.0 + GLSL 130
+	const std::string glslVersion{ "#version 130" };
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+	const int windowWidth{ 640 };
+	const int windowHeight{ 480 };
 
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
+	// Create window with graphics context
+	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "DDModMerger", NULL, NULL);
+	if (window == NULL)
+		return -1;
+	glfwMakeContextCurrent(window);
+	glfwSwapInterval(1); // Enable vsync
 
-    // Setup Platform/Renderer bindings
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion.c_str()); // Pass your OpenGL version here
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
-    // Initialize DDModManager Global Context Variables
-    CVarReader cvReader{};
-    cvReader.ParseArguments(argc, argv);
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
 
-    std::shared_ptr<powe::ThreadPool> threadPool{ std::make_shared<powe::ThreadPool>(std::thread::hardware_concurrency()) };
-    std::shared_ptr<ContentManager> contentManager{ std::make_shared<ContentManager>(cvReader,threadPool) };
+	// Setup Platform/Renderer bindings
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init(glslVersion.c_str()); // Pass your OpenGL version here
+	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    std::unordered_map<UserContextVariable, UserVariable> userContextVariables{};
+	// Initialize DDModManager Global Context Variables
+	std::shared_ptr<powe::ThreadPool> threadPool{ std::make_shared<powe::ThreadPool>(std::thread::hardware_concurrency()) };
+	std::shared_ptr<ContentManager> contentManager{ std::make_shared<ContentManager>(cvReader,threadPool) };
+	std::shared_ptr<DirTreeCreator> dirTreeCreator{ std::make_shared<DirTreeCreator>(cvReader, threadPool) };
+	std::shared_ptr<ModMerger> modMerger{ std::make_shared<ModMerger>(cvReader,threadPool) };
 
-    userContextVariables[ThreadCount] = int(std::thread::hardware_concurrency());
-    userContextVariables[NewThreadCount] = int(std::thread::hardware_concurrency());
-    userContextVariables[MergeConfirmation] = false;
+	BlackBoard userContextVars{};
 
-    while (!glfwWindowShouldClose(window))
-    {
-        glfwPollEvents();
+	userContextVars[ThreadCount] = int(std::thread::hardware_concurrency());
+	userContextVars[NewThreadCount] = int(std::thread::hardware_concurrency());
+	userContextVars[MergeConfirmation] = false;
+	userContextVars[Refresh] = false;
 
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+	while (!glfwWindowShouldClose(window))
+	{
+		glfwPollEvents();
 
-        // (1) Render your GUI with ImGui functions here
-        ImGui::Begin("ModMerger", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-        ImGui::SetWindowSize("ModMerger", ImVec2(windowWidth, windowHeight), ImGuiCond_Once);
+		// Start the Dear ImGui frame
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
 
-        if (ImGui::Button("Refresh"))
-        {
-            // Handle Refresh button click event
-            // TODO: Implement Refresh functionality
-        }
+		// (1) Render your GUI with ImGui functions here
+		ImGui::Begin("ModMerger", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+		ImGui::SetWindowSize("ModMerger", ImVec2(windowWidth, windowHeight), ImGuiCond_Once);
 
-        ImGui::SameLine(); // Align the next item to the right of the previous item
+		if (ImGui::Button("Refresh"))
+		{
+			userContextVars[Refresh] = true;
+			contentManager->LoadModsContentAsync();
+		}
 
-        // Merge Files
-        {
-            if (ImGui::Button("Merge"))
-            {
-                // Handle Merge button click event
-                // TODO: Implement Merge functionality
-                userContextVariables[MergeConfirmation] = true;
-            }
+		ImGui::SameLine(); // Align the next item to the right of the previous item
 
-            auto& mergeConfirmationOpen = Get<bool>(userContextVariables[MergeConfirmation]);
+		// Merge Files
+		{
+			if (ImGui::Button("Merge"))
+			{
+				// Handle Merge button click event
+				userContextVars[MergeConfirmation] = true;
+			}
 
-            // Render the merge confirmation box
-            if (mergeConfirmationOpen)
-            {
-                ImGui::OpenPopup("Merge Confirmation");
+			auto& mergeConfirmationOpen = BlackBoard::Get<bool>(userContextVars[MergeConfirmation]);
 
-                if (ImGui::BeginPopupModal("Merge Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-                {
-                    ImGui::Text("Are you sure you want to merge?");
-                    ImGui::Separator();
+			// Render the merge confirmation box
+			if (mergeConfirmationOpen)
+			{
+				ImGui::OpenPopup("Merge Confirmation");
 
-                    if (ImGui::Button("Yes", ImVec2(120.0f, 0.0f)))
-                    {
-                        // Handle the merge confirmation
-                        // TODO: Implement Merge functionality
+				if (ImGui::BeginPopupModal("Merge Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+				{
+					ImGui::Text("Are you sure you want to merge?");
+					ImGui::Separator();
 
-                        // Close the merge confirmation box
-                        mergeConfirmationOpen = false;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("No", ImVec2(120, 0)))
-                    {
-                        // Close the merge confirmation box
-                        mergeConfirmationOpen = false;
-                    }
+					if (ImGui::Button("Yes", ImVec2(120.0f, 0.0f)))
+					{
+						// Handle the merge confirmation
+						// TODO: Implement Merge functionality
 
-                    ImGui::EndPopup();
-                }
-            }
-        }
+						// Close the merge confirmation box
+						mergeConfirmationOpen = false;
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("No", ImVec2(120, 0)))
+					{
+						// Close the merge confirmation box
+						mergeConfirmationOpen = false;
+					}
 
-        ImGui::SameLine(); // Align the next item to the right of the previous item
+					ImGui::EndPopup();
+				}
+			}
+		}
 
-        // Inside the ImGui window
-        ImGui::SetNextItemWidth(100.0f);
-        auto& threadCount = Get<int>(userContextVariables[ThreadCount]);
-        auto& newThreadCount = Get<int>(userContextVariables[NewThreadCount]);
+		ImGui::SameLine(); // Align the next item to the right of the previous item
 
-        if (ImGui::InputInt("Thread Count", &threadCount, 1, 100))
-        {
-            // Find the nearest power of 2 value
-            if (threadCount > newThreadCount)
-            {
-                newThreadCount *= 2;
-                threadCount = newThreadCount;
-            }
-            else
-            {
-                newThreadCount /= 2;
-                threadCount = newThreadCount;
-            }
+		// Inside the ImGui window
+		ImGui::SetNextItemWidth(100.0f);
+		auto& threadCount = BlackBoard::Get<int>(userContextVars[ThreadCount]);
+		auto& newThreadCount = BlackBoard::Get<int>(userContextVars[NewThreadCount]);
 
-            if (threadCount > 48)
-            {
-                threadCount = 48;
-                newThreadCount = 48;
-            }
-            else if (threadCount < 1)
-            {
-                threadCount = 1;
-                newThreadCount = 1;
-            }
-        }
-        ImGui::SameLine();
+		if (ImGui::InputInt("Thread Count", &threadCount, 1, 100))
+		{
+			// Find the nearest power of 2 value
+			if (threadCount > newThreadCount)
+			{
+				newThreadCount *= 2;
+				threadCount = newThreadCount;
+			}
+			else
+			{
+				newThreadCount /= 2;
+				threadCount = newThreadCount;
+			}
 
-        if (ImGui::Button("Create ARC Directory Tree"))
-        {
-            // Handle Merge button click event
-            // TODO: Implement Merge functionality
-        }
+			if (threadCount > 48)
+			{
+				threadCount = 48;
+				newThreadCount = 48;
+			}
+			else if (threadCount < 1)
+			{
+				threadCount = 1;
+				newThreadCount = 1;
+			}
+		}
 
 
-        ImGui::Dummy(ImVec2(0.0f, 10.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
-        ImGui::BeginChild("ChildR", ImVec2(-1.0f, -1.0f), ImGuiChildFlags_Border);
-        ImGui::Text("If nothing shows up here, click the 'Refresh' button above.");
+		ImGui::Dummy(ImVec2(0.0f, 10.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
+		ImGui::BeginChild("ChildR", ImVec2(-1.0f, -1.0f), ImGuiChildFlags_Border);
 
-        // Add additional vertical spacing using ImGui::Dummy()
-        ImGui::Dummy(ImVec2(0.0f, 50.0f));
+		auto& refreshHit{ BlackBoard::Get<bool>(userContextVars[Refresh]) };
 
-        ImGui::Text("Overriding ARC Files");
-        ImGui::Spacing();
+		if (!refreshHit)
+			ImGui::Text("If nothing shows up here, click the 'Refresh' button above.");
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.8f, 0.8f, 0.8f, 0.2f));
-        if (ImGui::BeginChild("##ARCFiles1", ImVec2(windowHeight * 0.4f, ImGui::GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeY))
-        {
-            // TODO: Do all the list of detectable files here
-        }
 
-        ImGui::PopStyleColor();
-        ImGui::EndChild();
+		if (refreshHit)
+		{
+			// Add additional vertical spacing using ImGui::Dummy()
+			ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-        ImGui::PopStyleVar();
-        ImGui::EndChild();
+			ImGui::Text("Overriding ARC Files");
 
-        ImGui::End();
+			ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-        ImGui::ShowDemoWindow();
+			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.8f, 0.8f, 0.8f, 0.2f));
+			if (ImGui::BeginChild("##ARCFiles1", ImVec2(windowWidth * 0.4f, ImGui::GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeY))
+			{
+				// TODO: Do all the list of selectables files here
+				auto& modsOverwriteOrder{ contentManager->GetAllModsOverwriteOrder() };
+				for (const auto& [fileName , path] : modsOverwriteOrder)
+				{
+					ImGui::Selectable(fileName.c_str());
+					ImGui::Spacing();
+				}
+			}
 
-        // Rendering
-        ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+			ImGui::PopStyleColor();
+			ImGui::EndChild();
+		}
 
-        glfwSwapBuffers(window);
-    }
+		ImGui::PopStyleVar();
+		ImGui::EndChild();
+		ImGui::End();
 
-    // Exiting
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+		//ImGui::ShowDemoWindow();
 
-    return 0;
+		// Rendering
+		ImGui::Render();
+		int display_w, display_h;
+		glfwGetFramebufferSize(window, &display_w, &display_h);
+		glViewport(0, 0, display_w, display_h);
+		glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		glfwSwapBuffers(window);
+	}
+
+	// Exiting
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
+	glfwDestroyWindow(window);
+	glfwTerminate();
+
+	return 0;
 }
 

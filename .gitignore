@@ -395,6 +395,7 @@ FodyWeavers.xsd
 *.msp
 
 openssl-3
+TestFolder
 
 # JetBrains Rider
 <<<<<<< HEAD

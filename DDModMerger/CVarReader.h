@@ -12,6 +12,8 @@ public:
 	void ParseArguments(int argc, char* argv[]);
 
 	std::string ReadCVar(const std::string& cVar) const;
+	
+	bool CheckArgs() const;
 
 private:
 
