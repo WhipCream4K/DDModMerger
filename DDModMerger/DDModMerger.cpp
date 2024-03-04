@@ -12,6 +12,7 @@
 #include "thread_pool/thread_pool.h"
 #include "CVarReader.h"
 #include "Blackboard.h"
+#include "MenuBar.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
@@ -94,12 +95,16 @@ int main(int argc, char* argv[])
 	std::shared_ptr<DirTreeCreator> dirTreeCreator{ std::make_shared<DirTreeCreator>(cvReader, threadPool) };
 	std::shared_ptr<ModMerger> modMerger{ std::make_shared<ModMerger>(cvReader,threadPool) };
 
+	// Initialize Widgets
+	std::shared_ptr<MenuBar> menuBar{ std::make_shared<MenuBar>() };
+
 	BlackBoard userContextVars{};
 
 	userContextVars[ThreadCount] = int(std::thread::hardware_concurrency());
 	userContextVars[NewThreadCount] = int(std::thread::hardware_concurrency());
 	userContextVars[MergeConfirmation] = false;
 	userContextVars[Refresh] = false;
+	userContextVars[ModsOverwriteSelection] = std::unordered_map<std::string, std::vector<bool>>{};
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -114,129 +119,60 @@ int main(int argc, char* argv[])
 		ImGui::Begin("ModMerger", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 		ImGui::SetWindowSize("ModMerger", ImVec2(windowWidth, windowHeight), ImGuiCond_Once);
 
-		if (ImGui::Button("Refresh"))
-		{
-			userContextVars[Refresh] = true;
-			contentManager->LoadModsContentAsync();
-		}
-
-		ImGui::SameLine(); // Align the next item to the right of the previous item
-
-		// Merge Files
-		{
-			if (ImGui::Button("Merge"))
-			{
-				// Handle Merge button click event
-				userContextVars[MergeConfirmation] = true;
-			}
-
-			auto& mergeConfirmationOpen = BlackBoard::Get<bool>(userContextVars[MergeConfirmation]);
-
-			// Render the merge confirmation box
-			if (mergeConfirmationOpen)
-			{
-				ImGui::OpenPopup("Merge Confirmation");
-
-				if (ImGui::BeginPopupModal("Merge Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-				{
-					ImGui::Text("Are you sure you want to merge?");
-					ImGui::Separator();
-
-					if (ImGui::Button("Yes", ImVec2(120.0f, 0.0f)))
-					{
-						// Handle the merge confirmation
-						// TODO: Implement Merge functionality
-
-						// Close the merge confirmation box
-						mergeConfirmationOpen = false;
-					}
-					ImGui::SameLine();
-					if (ImGui::Button("No", ImVec2(120, 0)))
-					{
-						// Close the merge confirmation box
-						mergeConfirmationOpen = false;
-					}
-
-					ImGui::EndPopup();
-				}
-			}
-		}
-
-		ImGui::SameLine(); // Align the next item to the right of the previous item
-
-		// Inside the ImGui window
-		ImGui::SetNextItemWidth(100.0f);
-		auto& threadCount = BlackBoard::Get<int>(userContextVars[ThreadCount]);
-		auto& newThreadCount = BlackBoard::Get<int>(userContextVars[NewThreadCount]);
-
-		if (ImGui::InputInt("Thread Count", &threadCount, 1, 100))
-		{
-			// Find the nearest power of 2 value
-			if (threadCount > newThreadCount)
-			{
-				newThreadCount *= 2;
-				threadCount = newThreadCount;
-			}
-			else
-			{
-				newThreadCount /= 2;
-				threadCount = newThreadCount;
-			}
-
-			if (threadCount > 48)
-			{
-				threadCount = 48;
-				newThreadCount = 48;
-			}
-			else if (threadCount < 1)
-			{
-				threadCount = 1;
-				newThreadCount = 1;
-			}
-		}
-
+		menuBar->Draw();
 
 		ImGui::Dummy(ImVec2(0.0f, 10.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
-		ImGui::BeginChild("ChildR", ImVec2(-1.0f, -1.0f), ImGuiChildFlags_Border);
-
-		auto& refreshHit{ BlackBoard::Get<bool>(userContextVars[Refresh]) };
-
-		if (!refreshHit)
-			ImGui::Text("If nothing shows up here, click the 'Refresh' button above.");
-
-
-		if (refreshHit)
+		if (ImGui::BeginChild("ChildR", ImVec2(-1.0f, -1.0f), ImGuiChildFlags_Border))
 		{
-			// Add additional vertical spacing using ImGui::Dummy()
-			ImGui::Dummy(ImVec2(0.0f, 10.0f));
+			auto& refreshHit{ BlackBoard::Get<bool>(userContextVars[Refresh]) };
 
-			ImGui::Text("Overriding ARC Files");
+			if (!refreshHit)
+				ImGui::Text("If nothing shows up here, click the 'Refresh' button above.");
 
-			ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.8f, 0.8f, 0.8f, 0.2f));
-			if (ImGui::BeginChild("##ARCFiles1", ImVec2(windowWidth * 0.4f, ImGui::GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeY))
+			if (refreshHit)
 			{
-				// TODO: Do all the list of selectables files here
-				auto& modsOverwriteOrder{ contentManager->GetAllModsOverwriteOrder() };
-				for (const auto& [fileName , path] : modsOverwriteOrder)
+				// Add additional vertical spacing using ImGui::Dummy()
+				ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+				ImGui::Text("Overriding ARC Files");
+
+				ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+				ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.8f, 0.8f, 0.8f, 0.2f));
+				if (ImGui::BeginChild("##ARCFiles1", ImVec2(windowWidth * 0.4f, ImGui::GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeY))
 				{
-					ImGui::Selectable(fileName.c_str());
-					ImGui::Spacing();
+					// TODO: Do all the list of selectables files here
+					auto& modsOverwriteOrder{ contentManager->GetAllModsOverwriteOrder() };
+					for (const auto& [fileName, path] : modsOverwriteOrder)
+					{
+						ImGui::Selectable(fileName.c_str());
+						ImGui::Spacing();
+					}
+
+					ImGui::EndChild();
 				}
+				ImGui::PopStyleColor();
+
+
+				ImGui::SameLine(windowWidth * 0.5f);
+				if (ImGui::BeginChild("##ModFiles1", ImVec2(-1.0f, ImGui::GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeY))
+				{
+					ImGui::EndChild();
+				}
+
 			}
 
-			ImGui::PopStyleColor();
+			ImGui::PopStyleVar();
 			ImGui::EndChild();
 		}
 
-		ImGui::PopStyleVar();
-		ImGui::EndChild();
+
 		ImGui::End();
 
 
-		//ImGui::ShowDemoWindow();
+		ImGui::ShowDemoWindow();
 
 		// Rendering
 		ImGui::Render();
