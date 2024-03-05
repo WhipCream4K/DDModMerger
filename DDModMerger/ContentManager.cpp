@@ -66,8 +66,3 @@ const powe::details::ModsOverwriteOrder& ContentManager::GetAllModsOverwriteOrde
 	return m_ModsOverwriteOrder;
 }
 
-void ContentManager::SetModsOrder(const std::string& fileName, const std::vector<std::string>& modsOrder)
-{
-
-}
-

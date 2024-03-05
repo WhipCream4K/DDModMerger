@@ -2,10 +2,13 @@
 
 #include <execution>
 
+#include "DirTreeCreator.h"
 #include "ContentManager.h"
 
 #include "imgui.h"
 #include "EnvironmentVariables.h"
+
+namespace fs = std::filesystem;
 
 void MergeArea::SetMergeAreaVisible(bool visible)
 {
@@ -31,6 +34,7 @@ void MergeArea::Draw()
 		if (!m_RefreshModsContent)
 		{
 			m_ModsOverwriteOrderTemp = m_ContentManager->GetAllModsOverwriteOrder();
+			m_DirTreeTemp = &m_DirTreeCreator->GetDirTree();
 			m_RefreshModsContent = true;
 		}
 
@@ -69,8 +73,6 @@ void MergeArea::Draw()
 
 				if (ImGui::Selectable(fileName.c_str(), m_SelectedMainFileName == fileName))
 				{
-
-
 					if (m_SelectedMainFileName == fileName)
 					{
 						m_SelectedMainFileName.clear();
@@ -85,13 +87,32 @@ void MergeArea::Draw()
 
 				if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_NoSharedDelay))
 				{
-					//ImGui::SetTooltip(path[0].c_str());
+					ImGui::SetTooltip(m_DirTreeTemp->at(fileName).c_str());
 				}
 
-
+				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					ImGui::OpenPopup("##MainFilesPopupMenu");
+					m_PopupFileName = fileName;
+				}
 			}
+
+			if (ImGui::BeginPopup("##MainFilesPopupMenu"))
+			{
+				if (ImGui::MenuItem("Open in Explorer"))
+				{
+					const fs::path path{ m_DirTreeTemp->at(m_PopupFileName) };
+					const std::string command{ "explorer " + fs::absolute(path.parent_path()).string() };
+					system(command.c_str());
+				}
+
+				ImGui::EndPopup();
+			}
+
 			ImGui::EndChild();
 		}
+
+
 
 		ImGui::SameLine(0.0f, 50.0f);
 		if (ImGui::BeginChild("##ModFiles1", ImVec2(-1.0f, ImGui::GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeY))
@@ -123,7 +144,25 @@ void MergeArea::Draw()
 						}
 					}
 
+					if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+					{
+						ImGui::OpenPopup("##MainFilesPopupMenu");
+						m_PopupFileName = modsOrder[i];
+					}
+
 					ImGui::Spacing();
+				}
+
+				if (ImGui::BeginPopup("##MainFilesPopupMenu"))
+				{
+					if (ImGui::MenuItem("Open in Explorer"))
+					{
+						const fs::path path{ m_PopupFileName };
+						const std::string command{ "explorer " + fs::absolute(path.parent_path()).string() };
+						system(command.c_str());
+					}
+
+					ImGui::EndPopup();
 				}
 			}
 

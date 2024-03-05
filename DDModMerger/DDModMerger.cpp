@@ -96,10 +96,10 @@ int main(int argc, char* argv[])
 	std::shared_ptr<ModMerger> modMerger{ std::make_shared<ModMerger>(cvReader,threadPool) };
 
 	// Initialize Widgets
-	std::shared_ptr<MergeArea> mergeArea{ std::make_shared<MergeArea>(contentManager) };
+	std::shared_ptr<MergeArea> mergeArea{ std::make_shared<MergeArea>(contentManager,dirTreeCreator) };
 	std::shared_ptr<MenuBar> menuBar{ std::make_shared<MenuBar>(
 		std::make_unique<RefreshTask>(contentManager,mergeArea,dirTreeCreator),
-		std::make_unique<MergeTask>(modMerger)) };
+		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator)) };
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -127,11 +127,10 @@ int main(int argc, char* argv[])
 			ImGui::EndChild();
 		}
 
-
 		ImGui::End();
 
 
-		ImGui::ShowDemoWindow();
+		//ImGui::ShowDemoWindow();
 
 		// Rendering
 		ImGui::Render();

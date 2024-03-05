@@ -45,6 +45,12 @@ public:
 		bool backup = true,
 		bool measureTime = true);
 
+	void MergeContentAsync(
+		const powe::details::DirectoryTree& dirTree,
+		const powe::details::ModsOverwriteOrder& overwriteOrder,
+		bool backup = true,
+		bool measureTime = true);
+
 
 private:
 
@@ -69,6 +75,8 @@ private:
 		const powe::details::ModsOverwriteOrder& overwriteOrder);
 
 	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+
+	std::future<void> m_MergeTask;
 
 	std::string m_ModFolderPath;
 	std::string m_ARCToolScriptPath;

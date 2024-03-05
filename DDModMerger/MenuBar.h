@@ -37,8 +37,12 @@ class MergeTask : public Command
 {
 public:
 
-	MergeTask(std::shared_ptr<ModMerger> modMerger)
+	MergeTask(std::shared_ptr<ModMerger> modMerger,
+		std::shared_ptr<MergeArea> mergeArea,
+		std::shared_ptr<DirTreeCreator> dirTreeCreator)
 		: m_ModMerger(modMerger)
+		, m_MergeArea(mergeArea)
+		, m_DirTreeCreator(dirTreeCreator)
 	{
 	}
 
@@ -49,6 +53,8 @@ public:
 private:
 
 	std::shared_ptr<ModMerger> m_ModMerger;
+	std::shared_ptr<DirTreeCreator> m_DirTreeCreator;
+	std::shared_ptr<MergeArea> m_MergeArea;
 };
 
 class MenuBar : public Widget

@@ -165,14 +165,14 @@ std::future<void> ModMerger::UnpackAsync(std::string_view sourcePath, std::strin
 
 std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std::vector<std::string>& pathToMods)
 {
-	auto threadPromise{ std::make_shared<std::promise<void>>() };
-	std::future<void> threadFuture{ threadPromise->get_future() };
+	//auto threadPromise{ std::make_shared<std::promise<void>>() };
+	//std::future<void> threadFuture{ threadPromise->get_future() };
 
 	// The merge can only happen when the file compare is done by order
 	// that means we have to wait for the first compare to finish then we can start the merge
 	// and then checks again if the next compare is done and so on
 
-	auto merge = [threadPromise, mainFilePath, &pathToMods, this]()
+	auto merge = [mainFilePath, &pathToMods, this]()
 		{
 			fs::path tempFolder{ m_OutputFolderPath };
 
@@ -189,7 +189,7 @@ std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std
 				// now we just go a list of files that we need to move to sourcePath
 				auto cleanFilesToMove{ PrepareForMerge(mainFilePath, tempFolder.string(), pathToMods) };
 
-				std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(), 
+				std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(),
 					[&tempFolder, this](const std::string& file)
 					{
 						// fast find substring of the modsID
@@ -204,7 +204,6 @@ std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std
 					});
 			}
 
-
 			// Repack
 			CallARCTool(mainUnpackFolder, m_ARCToolScriptPath);
 
@@ -218,14 +217,10 @@ std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std
 			}
 
 			fs::remove_all(tempFolder);
-
-			threadPromise->set_value();
 		};
 
 
-	m_ThreadPool->enqueue_detach(merge);
-
-	return threadFuture;
+	return m_ThreadPool->enqueue(merge);
 }
 
 std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePath, std::string_view unpackPath, const std::vector<std::string>& modsPath)
@@ -386,5 +381,62 @@ void ModMerger::MergeContent(const powe::details::DirectoryTree& dirTree, const 
 	{
 		MergeContentIntern(dirTree, overwriteOrder);
 	}
+}
+
+void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, const powe::details::ModsOverwriteOrder& overwriteOrder, bool backup, bool measureTime)
+{
+	if (overwriteOrder.empty())
+	{
+		std::cerr << "No mods to merge\n";
+		return;
+	}
+
+	if (m_MergeTask.valid())
+	{
+		std::cerr << "Merge task is already running\n";
+		return;
+	}
+
+	if (backup)
+	{
+		const std::string backupFolder{ m_OutputFolderPath + "/backup" };
+
+		std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(), [&dirTree, back = std::string_view(backupFolder)](const auto& value)
+			{
+				if (auto pathToFile = dirTree.find(value.first); pathToFile != dirTree.end())
+				{
+					const auto& path{ pathToFile->second };
+
+					const fs::path fileAfterTopLevelFolder{ path.substr(path.find(DEFAULT_DD_TOPLEVEL_FOLDER)) };
+					const std::string pathToBackupFolder{ fs::path(back / fileAfterTopLevelFolder.parent_path()).string() };
+					MakeBackup(path, pathToBackupFolder);
+				}
+			});
+	}
+
+	if (measureTime)
+	{
+		auto merge = [this, &dirTree, &overwriteOrder]()
+			{
+				// measure time
+				auto start = std::chrono::high_resolution_clock::now();
+				MergeContentIntern(dirTree, overwriteOrder);
+				auto end = std::chrono::high_resolution_clock::now();
+				std::chrono::duration<double> elapsed = end - start;
+				std::cout << "Merge Elapsed time: " << elapsed.count() << "s\n";
+			};
+
+		m_MergeTask = m_ThreadPool->enqueue(merge);
+	}
+	else
+	{
+		auto merge = [this, &dirTree, &overwriteOrder]()
+			{
+				MergeContentIntern(dirTree, overwriteOrder);
+			};
+
+		m_MergeTask = m_ThreadPool->enqueue(merge);
+	}
+
 }
 

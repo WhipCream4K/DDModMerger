@@ -4,6 +4,7 @@
 #include "ContentManager.h"
 #include "MergeArea.h"
 #include "DirTreeCreator.h"
+#include "ModMerger.h"
 
 void MenuBar::Draw()
 {
@@ -28,17 +29,15 @@ void MenuBar::Draw()
 		{
 			ImGui::OpenPopup("Merge Confirmation");
 
-			if (ImGui::BeginPopupModal("Merge Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+			if (ImGui::BeginPopupModal("Merge Confirmation", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 			{
 				ImGui::Text("Are you sure you want to merge?");
 				ImGui::Separator();
 
 				if (ImGui::Button("Yes", ImVec2(120.0f, 0.0f)))
 				{
-					// Handle the merge confirmation
-					// TODO: Implement Merge functionality
-
 					// Close the merge confirmation box
+					m_MergeTask->Execute();
 					m_MergeButtonPressed = false;
 				}
 				ImGui::SameLine();
@@ -96,4 +95,8 @@ void RefreshTask::Execute()
 
 void MergeTask::Execute()
 {
+	m_ModMerger->MergeContentAsync(
+		m_DirTreeCreator->GetDirTree(),
+		m_MergeArea->GetUserModsOverwriteOrder(),
+		true);
 }
