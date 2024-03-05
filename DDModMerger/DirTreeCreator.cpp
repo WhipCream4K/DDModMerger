@@ -89,7 +89,7 @@ powe::details::DirectoryTree DirTreeCreator::CreateDirTree(bool measureTime) con
 	return CreateDirTreeIntern();
 }
 
-std::future<powe::details::DirectoryTree> DirTreeCreator::CreateDirTreeAsync(bool measureTime) const
+void DirTreeCreator::CreateDirTreeAsync(bool measureTime)
 {
 	if (measureTime)
 	{
@@ -104,7 +104,7 @@ std::future<powe::details::DirectoryTree> DirTreeCreator::CreateDirTreeAsync(boo
 				return fileMap;
 			};
 
-		return m_ThreadPool->enqueue(createDirTree);
+		m_CreateDirTreeFuture = m_ThreadPool->enqueue(createDirTree);
 	}
 
 	auto createDirTree = [this]() -> powe::details::DirectoryTree
@@ -112,14 +112,22 @@ std::future<powe::details::DirectoryTree> DirTreeCreator::CreateDirTreeAsync(boo
 			return CreateDirTreeIntern();
 		};
 
-	return m_ThreadPool->enqueue(createDirTree);
+	m_CreateDirTreeFuture = m_ThreadPool->enqueue(createDirTree);
 
+}
+
+const powe::details::DirectoryTree& DirTreeCreator::GetDirTree()
+{
+	if (m_CreateDirTreeFuture.valid())
+	{
+		m_DirTree = m_CreateDirTreeFuture.get();
+	}
+	return m_DirTree;
 }
 
 powe::details::DirectoryTree DirTreeCreator::CreateDirTreeIntern() const
 {
-	fs::path searchFolderPath{ m_SearchFolderPath };
-	fs::path outputPath{ m_OutputFilePath + DirTreeFolder + "/" + DirTreeJSONFileName };
+	const fs::path outputPath{ m_OutputFilePath + DirTreeFolder + "/" + DirTreeJSONFileName };
 
 	// Check if the output file already exists
 	if (fs::exists(outputPath)) {

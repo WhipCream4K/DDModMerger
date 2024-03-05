@@ -175,7 +175,6 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="BlackBoard.cpp" />
     <ClCompile Include="Command.cpp" />
     <ClCompile Include="ContentManager.cpp" />
     <ClCompile Include="CVarReader.cpp" />
@@ -183,12 +182,12 @@
     <ClCompile Include="DirTreeCreator.cpp" />
     <ClCompile Include="LFQueue.cpp" />
     <ClCompile Include="MenuBar.cpp" />
+    <ClCompile Include="MergeArea.cpp" />
     <ClCompile Include="ModMerger.cpp" />
     <ClCompile Include="utils.cpp" />
     <ClCompile Include="Widget.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="BlackBoard.h" />
     <ClInclude Include="Command.h" />
     <ClInclude Include="ContentManager.h" />
     <ClInclude Include="CVarReader.h" />
@@ -196,10 +195,12 @@
     <ClInclude Include="EnvironmentVariables.h" />
     <ClInclude Include="LFQueue.h" />
     <ClInclude Include="MenuBar.h" />
+    <ClInclude Include="MergeArea.h" />
     <ClInclude Include="ModMerger.h" />
     <ClInclude Include="Types.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="Widget.h" />
+    <ClInclude Include="WindowContext.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\glfw_vs\glfw_vs.vcxproj">

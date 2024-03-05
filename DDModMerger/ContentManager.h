@@ -15,6 +15,12 @@ public:
 	void LoadModsContentAsync();
 	const powe::details::ModsOverwriteOrder& GetAllModsOverwriteOrder();
 
+	void SetModsOrder(
+		const std::string& fileName,
+		const std::vector<std::string>& modsOrder);
+
+	std::string_view GetModsFilePath() const { return m_ModsFilePath; }
+
 private:
 
 	std::shared_ptr<powe::ThreadPool> m_ThreadPool;

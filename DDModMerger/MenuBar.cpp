@@ -2,6 +2,8 @@
 
 #include "imgui.h"
 #include "ContentManager.h"
+#include "MergeArea.h"
+#include "DirTreeCreator.h"
 
 void MenuBar::Draw()
 {
@@ -88,4 +90,10 @@ void MenuBar::Draw()
 void RefreshTask::Execute()
 {
 	m_ContentManager->LoadModsContentAsync();
+	m_MergeArea->SetMergeAreaVisible(true);
+	m_DirTreeCreator->CreateDirTreeAsync();
+}
+
+void MergeTask::Execute()
+{
 }

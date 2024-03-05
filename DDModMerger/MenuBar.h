@@ -5,12 +5,19 @@
 
 
 class ContentManager;
+class MergeArea;
+class DirTreeCreator;
 class RefreshTask : public Command
 {
 public:
 
-	RefreshTask(std::shared_ptr<ContentManager> contentManager)
+	explicit RefreshTask(
+		std::shared_ptr<ContentManager> contentManager, 
+		std::shared_ptr<MergeArea> mergeArea,
+		std::shared_ptr<DirTreeCreator> dirTreeCreator)
 		: m_ContentManager(contentManager)
+		, m_MergeArea(mergeArea)
+		, m_DirTreeCreator(dirTreeCreator)
 	{
 	}
 
@@ -21,11 +28,39 @@ public:
 private:
 
 	std::shared_ptr<ContentManager> m_ContentManager;
+	std::shared_ptr<MergeArea> m_MergeArea;
+	std::shared_ptr<DirTreeCreator> m_DirTreeCreator;
+};
+
+class ModMerger;
+class MergeTask : public Command
+{
+public:
+
+	MergeTask(std::shared_ptr<ModMerger> modMerger)
+		: m_ModMerger(modMerger)
+	{
+	}
+
+	virtual void Execute();
+
+	~MergeTask() = default;
+
+private:
+
+	std::shared_ptr<ModMerger> m_ModMerger;
 };
 
 class MenuBar : public Widget
 {
 public:
+
+	MenuBar(std::unique_ptr<RefreshTask>&& refreshTask,
+			std::unique_ptr<MergeTask>&& mergeTask)
+		: m_RefreshTask(std::move(refreshTask))
+		, m_MergeTask(std::move(mergeTask))
+	{
+	}
 
 	void Draw() override;
 	~MenuBar() = default;
@@ -33,8 +68,9 @@ public:
 private:
 
 	std::unique_ptr<RefreshTask> m_RefreshTask;
+	std::unique_ptr<MergeTask> m_MergeTask;
 	bool m_MergeButtonPressed{};
-	int m_ThreadCount{int(std::thread::hardware_concurrency())};
-	int m_NewThreadCount{int(std::thread::hardware_concurrency())};
+	int m_ThreadCount{ int(std::thread::hardware_concurrency()) };
+	int m_NewThreadCount{ int(std::thread::hardware_concurrency()) };
 };
 

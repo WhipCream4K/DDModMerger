@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <future>
+#include <execution>
 
 #include "LFQueue.h"
 #include "Types.h"
@@ -31,9 +32,9 @@ void RecursiveFileSearchAsync(const std::string& source, std::string_view extens
 	for (const auto& entry : fs::directory_iterator(source, fs::directory_options::skip_permission_denied)) {
 		if (entry.is_regular_file() && entry.path().extension() == extension)
 		{
-			std::string filename = entry.path().stem().string();
-			std::string filePath = entry.path().string();
-			std::replace(filePath.begin(), filePath.end(), '\\', '/');
+			const std::string filename{ entry.path().stem().string() };
+			std::string filePath{ entry.path().string() };
+			std::replace(std::execution::par_unseq,filePath.begin(), filePath.end(), '\\', '/');
 
 			fileMap[filename] = filePath;
 		}
