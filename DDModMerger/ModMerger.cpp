@@ -13,6 +13,7 @@
 #include "EnvironmentVariables.h"
 #include "openssl/sha.h"
 #include "thread_pool/thread_pool.h"
+#include "utils.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -165,9 +166,6 @@ std::future<void> ModMerger::UnpackAsync(std::string_view sourcePath, std::strin
 
 std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std::vector<std::string>& pathToMods)
 {
-	//auto threadPromise{ std::make_shared<std::promise<void>>() };
-	//std::future<void> threadFuture{ threadPromise->get_future() };
-
 	// The merge can only happen when the file compare is done by order
 	// that means we have to wait for the first compare to finish then we can start the merge
 	// and then checks again if the next compare is done and so on
@@ -236,6 +234,9 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 	const fs::path unpackFS{ unpackPath };
 	const fs::path mainFileFS{ fs::path(mainFilePath).filename() };
 
+	std::vector<std::string> modsNames{};
+	modsNames.reserve(modsPath.size());
+
 	// Unpack files
 	{
 		// we expect all mods file and one main file to unpack and main thread
@@ -245,7 +246,10 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 
 		for (size_t i = 0; i < modsPath.size(); i++)
 		{
-			UnpackBarrier(modsPath[i], (unpackFS / std::to_string(i)).string(), barrier);
+			std::string modName{modsPath[i].substr(m_ModFolderPath.size(),10)}; // Due to ARCTools not recognize complicate mod's name we will use the first 10 characters
+            modName.erase(std::remove(std::execution::par_unseq,modName.begin(), modName.end(), ' '), modName.end());
+			modsNames.emplace_back(modName);
+			UnpackBarrier(modsPath[i], (unpackFS / modsNames[i]).string(), barrier);
 		}
 
 		barrier.arrive_and_wait();
@@ -263,7 +267,7 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 		{
 			compareFutures.emplace_back(CompareDirectoriesAsync(
 				unpackBaseSource.string(),
-				(unpackFS / std::to_string(i) / mainFileFS.stem()).string()));
+				(unpackFS / modsNames[i] / mainFileFS.stem()).string()));
 		}
 
 		for (auto& future : compareFutures)
@@ -303,11 +307,6 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 			// copy the main file to the temp folder
 			if (const auto findItr = dirTree.find(fileName); findItr != dirTree.end())
 			{
-				// for example the pathToMergeFolder will look like out/nativePC/rom
-				std::string_view mainFilePath{ findItr->second };
-				const std::string fileAfterTopLevelFolder{ mainFilePath.substr(mainFilePath.find(DEFAULT_DD_TOPLEVEL_FOLDER) + sizeof(DEFAULT_DD_TOPLEVEL_FOLDER) + 1) };
-				const fs::path pathToMergeFolder{ outputFolder / fileAfterTopLevelFolder };
-
 				mergeFutures.emplace_back(MergeAsync(findItr->second, pathToMods));
 			}
 		}
@@ -317,16 +316,19 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 	{
 		future.get();
 	}
+
+	m_MergeTask = std::future<void>{};
 }
 
 ModMerger::ModMerger(
 	const CVarReader& cVarReader,
-	const std::shared_ptr<powe::ThreadPool>& threadPool)
+	std::shared_ptr<powe::ThreadPool>& threadPool)
 	: m_ThreadPool(threadPool)
 {
 	m_ModFolderPath = cVarReader.ReadCVar("-mods");
 	m_OutputFolderPath = cVarReader.ReadCVar("-out");
 	m_ARCToolScriptPath = cVarReader.ReadCVar("-arctool");
+	m_SearchFolderPath = cVarReader.ReadCVar("-path");
 
 
 	if (!threadPool)
@@ -435,7 +437,6 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 
 		m_MergeTask = m_ThreadPool->enqueue(merge);
 	}
-
 }
 
 bool ModMerger::IsARCToolExist() const

@@ -34,7 +34,7 @@ void RecursiveFileSearchAsync(const std::string& source, std::string_view extens
 		{
 			const std::string filename{ entry.path().stem().string() };
 			std::string filePath{ entry.path().string() };
-			std::replace(std::execution::par_unseq,filePath.begin(), filePath.end(), '\\', '/');
+			std::replace(std::execution::par_unseq, filePath.begin(), filePath.end(), '\\', '/');
 
 			fileMap[filename] = filePath;
 		}
@@ -93,4 +93,12 @@ powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPa
 	}
 
 	return outFileMap;
+}
+
+std::string GetModName(std::string_view modsParentPath, std::string_view modPath)
+{
+	std::string modsName{ modPath };
+	modsName = modsName.substr(modsParentPath.size() + 1); // + 1 for the '/'
+	modsName = modsName.substr(0, modsName.find_first_of("/\\"));
+	return modsName;
 }

@@ -13,3 +13,5 @@ powe::details::DirectoryTree RecursiveFileSearch(
 	std::string_view interestedExtension,
 	std::shared_ptr<powe::ThreadPool> threadPool);
 
+std::string GetModName(std::string_view modsParentPath,std::string_view modPath);
+

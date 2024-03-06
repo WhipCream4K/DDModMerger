@@ -23,6 +23,8 @@ public:
 
 	virtual void Execute();
 
+	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool);
+
 	~RefreshTask() = default;
 
 private:
@@ -46,6 +48,8 @@ public:
 	{
 	}
 
+	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool);
+
 	bool IsARCToolExist() const;
 	bool IsMergeReady() const;
 
@@ -65,9 +69,11 @@ class MenuBar : public Widget
 public:
 
 	MenuBar(std::unique_ptr<RefreshTask>&& refreshTask,
-			std::unique_ptr<MergeTask>&& mergeTask)
+			std::unique_ptr<MergeTask>&& mergeTask,
+		const std::shared_ptr<powe::ThreadPool>& threadPool)
 		: m_RefreshTask(std::move(refreshTask))
 		, m_MergeTask(std::move(mergeTask))
+		, m_ThreadPool(threadPool)
 	{
 	}
 
@@ -78,8 +84,10 @@ private:
 
 	std::unique_ptr<RefreshTask> m_RefreshTask;
 	std::unique_ptr<MergeTask> m_MergeTask;
-	bool m_MergeButtonPressed{};
+	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
 	int m_ThreadCount{ int(std::thread::hardware_concurrency()) };
 	int m_NewThreadCount{ int(std::thread::hardware_concurrency()) };
+
+	bool m_MergeButtonPressed{};
 };
 

@@ -11,6 +11,13 @@ void MenuBar::Draw()
 
 	if (ImGui::Button("Refresh"))
 	{
+		if (m_ThreadCount != m_ThreadPool->size())
+		{
+			m_ThreadPool = std::make_shared<powe::ThreadPool>(m_ThreadCount);
+			m_RefreshTask->SetThreadPool(m_ThreadPool);
+			m_MergeTask->SetThreadPool(m_ThreadPool);
+		}
+
 		m_RefreshTask->Execute();
 	}
 
@@ -48,7 +55,7 @@ void MenuBar::Draw()
 					ImGui::Text("Merge operation is already started");
 				}
 
-				if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || 
+				if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
 					ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 				{
 					m_MergeButtonPressed = false;
@@ -65,6 +72,12 @@ void MenuBar::Draw()
 				if (ImGui::Button("Yes", ImVec2(120.0f, 0.0f)))
 				{
 					// Close the merge confirmation box
+					if (m_ThreadPool->size() != m_ThreadCount)
+					{
+						m_ThreadPool = std::make_shared<powe::ThreadPool>(m_ThreadCount);
+						m_MergeTask->SetThreadPool(m_ThreadPool);
+					}
+
 					m_MergeTask->Execute();
 					m_MergeButtonPressed = false;
 				}
@@ -119,6 +132,17 @@ void RefreshTask::Execute()
 	m_ContentManager->LoadModsContentAsync();
 	m_MergeArea->SetMergeAreaVisible(true);
 	m_DirTreeCreator->CreateDirTreeAsync();
+}
+
+void RefreshTask::SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool)
+{
+	m_ContentManager->SetThreadPool(threadPool);
+	m_DirTreeCreator->SetThreadPool(threadPool);
+}
+
+void MergeTask::SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool)
+{
+	m_ModMerger->SetThreadPool(threadPool);
 }
 
 bool MergeTask::IsARCToolExist() const

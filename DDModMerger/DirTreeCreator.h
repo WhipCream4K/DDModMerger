@@ -22,11 +22,13 @@ public:
 	static constexpr const char* DirTreeFolder = "/cache";
 	static constexpr const char* DirTreeJSONFileName = "dirTree.json";
 
+	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool) { m_ThreadPool = threadPool; }
+
 private:
 
 	powe::details::DirectoryTree CreateDirTreeIntern() const;
 
-	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+	mutable std::shared_ptr<powe::ThreadPool> m_ThreadPool;
 	
 	powe::details::DirectoryTree m_DirTree;
 	std::future<powe::details::DirectoryTree> m_CreateDirTreeFuture;

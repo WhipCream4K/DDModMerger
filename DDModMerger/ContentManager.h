@@ -17,6 +17,8 @@ public:
 
 	std::string_view GetModsFilePath() const { return m_ModsFilePath; }
 
+	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool) { m_ThreadPool = threadPool; }
+
 private:
 
 	std::shared_ptr<powe::ThreadPool> m_ThreadPool;

@@ -90,16 +90,17 @@ int main(int argc, char* argv[])
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
 	// Initialize DDModManager Global Context Variables
-	std::shared_ptr<powe::ThreadPool> threadPool{ std::make_shared<powe::ThreadPool>(std::thread::hardware_concurrency()) };
+	std::shared_ptr<powe::ThreadPool>  threadPool{ std::make_shared<powe::ThreadPool>(std::thread::hardware_concurrency()) };
 	std::shared_ptr<ContentManager> contentManager{ std::make_shared<ContentManager>(cvReader,threadPool) };
 	std::shared_ptr<DirTreeCreator> dirTreeCreator{ std::make_shared<DirTreeCreator>(cvReader, threadPool) };
 	std::shared_ptr<ModMerger> modMerger{ std::make_shared<ModMerger>(cvReader,threadPool) };
 
 	// Initialize Widgets
-	std::shared_ptr<MergeArea> mergeArea{ std::make_shared<MergeArea>(contentManager,dirTreeCreator) };
+	std::shared_ptr<MergeArea> mergeArea{ std::make_shared<MergeArea>(contentManager,dirTreeCreator,modMerger) };
 	std::shared_ptr<MenuBar> menuBar{ std::make_shared<MenuBar>(
 		std::make_unique<RefreshTask>(contentManager,mergeArea,dirTreeCreator),
-		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator)) };
+		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator),threadPool) };
+
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -128,9 +129,6 @@ int main(int argc, char* argv[])
 		}
 
 		ImGui::End();
-
-
-		//ImGui::ShowDemoWindow();
 
 		// Rendering
 		ImGui::Render();

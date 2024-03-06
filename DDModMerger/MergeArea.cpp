@@ -4,6 +4,7 @@
 
 #include "DirTreeCreator.h"
 #include "ContentManager.h"
+#include "ModMerger.h"
 
 #include "imgui.h"
 #include "EnvironmentVariables.h"
@@ -24,9 +25,23 @@ void MergeArea::Draw()
 	if (m_MergeAreaVisible)
 	{
 		// Add additional vertical spacing using ImGui::Dummy()
+
 		ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing()));
 
-		ImGui::Text("Overriding ARC Files");
+		ImGui::Text("Overwrite ARC Files");
+
+        if (!m_ModMerger->IsReadyToMerge())
+        {
+            ImGui::SameLine(0.0f, 10.0f);
+
+            // Add animation here
+            static float time = 0.0f;
+            time += ImGui::GetIO().DeltaTime;
+            float alpha = (sinf(time * 2.0f) + 1.0f) * 0.5f;
+            ImVec4 textColor = ImVec4(1.0f, 1.0f, 1.0f, alpha);
+            ImGui::TextColored(textColor, "Merging...");
+
+        }
 
 		ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
 

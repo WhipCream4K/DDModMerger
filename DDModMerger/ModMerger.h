@@ -38,7 +38,7 @@ public:
 
 	ModMerger(
 		const CVarReader& cVarReader,
-		const std::shared_ptr<powe::ThreadPool>& threadPool);
+		std::shared_ptr<powe::ThreadPool>& threadPool);
 
 	void MergeContent(
 		const powe::details::DirectoryTree& dirTree,
@@ -51,6 +51,8 @@ public:
 		const powe::details::ModsOverwriteOrder& overwriteOrder,
 		bool backup = true,
 		bool measureTime = true);
+
+	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool) { m_ThreadPool = threadPool; }
 
 	bool IsARCToolExist() const;
 	bool IsReadyToMerge() const;
@@ -83,13 +85,14 @@ private:
 		const powe::details::DirectoryTree& dirTree,
 		const powe::details::ModsOverwriteOrder& overwriteOrder);
 
-	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+	mutable std::shared_ptr<powe::ThreadPool> m_ThreadPool;
 
 	std::future<void> m_MergeTask;
 
 	std::string m_ModFolderPath;
 	std::string m_ARCToolScriptPath;
 	std::string m_OutputFolderPath;
+	std::string m_SearchFolderPath;
 };
 
 template<typename T, typename U>
@@ -117,9 +120,6 @@ MakeBackup(T sourcePath, U targetPath)
 template<typename T, typename U>
 inline std::future<void> ModMerger::UnpackAsync(T&& sourcePath, U&& targetPath)
 {
-	//std::shared_ptr<std::promise<void>> threadPromise{ std::make_shared<std::promise<void>>() };
-	//std::future<void> threadFuture{ threadPromise->get_future() };
-
 	auto copyAndUnpack = [lsourcePath = std::forward<T>(sourcePath), ltargetPath = std::forward<U>(targetPath),
 		arctool = std::string_view(m_ARCToolScriptPath)]() -> void
 		{
@@ -137,7 +137,7 @@ inline void ModMerger::UnpackBarrier(T&& sourcePath, U&& targetPath, std::barrie
 	auto copyAndUnpack = [
 		lsourcePath = std::forward<T>(sourcePath),
 			ltargetPath = std::forward<U>(targetPath),
-		arctool = std::string_view(m_ARCToolScriptPath),&barrier]() -> void
+			arctool = std::string_view(m_ARCToolScriptPath), &barrier]() -> void
 		{
 			MakeBackup(lsourcePath, ltargetPath);
 			const std::filesystem::path newBackupFilePath{ std::filesystem::path(ltargetPath) / std::filesystem::path(lsourcePath).filename() };
@@ -145,16 +145,16 @@ inline void ModMerger::UnpackBarrier(T&& sourcePath, U&& targetPath, std::barrie
 			barrier.arrive_and_wait();
 		};
 
-	m_ThreadPool->enqueue_detach(copyAndUnpack);
+		m_ThreadPool->enqueue_detach(copyAndUnpack);
 }
 
 template<typename T, typename U>
 inline std::future<std::vector<std::string>> ModMerger::CompareDirectoriesAsync(T&& sourcePath, U&& targetPath)
 {
-	auto comparePromise{ std::make_shared<std::promise<std::vector<std::string>>>() };
-	std::future<std::vector<std::string>> compareFuture{ comparePromise->get_future() };
+	//auto comparePromise{ std::make_shared<std::promise<std::vector<std::string>>>() };
+	//std::future<std::vector<std::string>> compareFuture{ comparePromise->get_future() };
 
-	auto compareCheck = [threadPool = m_ThreadPool, comparePromise,
+	auto compareCheck = [threadPool = m_ThreadPool,
 		lbaseSource = std::forward<T>(sourcePath),
 		lpathToTarget = std::forward<U>(targetPath)]()
 		{
@@ -185,10 +185,9 @@ inline std::future<std::vector<std::string>> ModMerger::CompareDirectoriesAsync(
 					return activeTasks.load(std::memory_order_relaxed) == 0;
 				});
 
-			comparePromise->set_value(compareArgs->filesToMove);
+			return compareArgs->filesToMove;
+			//comparePromise->set_value(compareArgs->filesToMove);
 		};
 
-	m_ThreadPool->enqueue_detach(compareCheck);
-
-	return compareFuture;
+	return m_ThreadPool->enqueue(compareCheck);
 }
