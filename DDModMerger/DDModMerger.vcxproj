@@ -185,6 +185,7 @@
     <ClCompile Include="MenuBar.cpp" />
     <ClCompile Include="MergeArea.cpp" />
     <ClCompile Include="ModMerger.cpp" />
+    <ClCompile Include="ThreadPool.cpp" />
     <ClCompile Include="utils.cpp" />
     <ClCompile Include="Widget.cpp" />
   </ItemGroup>
@@ -199,6 +200,7 @@
     <ClInclude Include="MenuBar.h" />
     <ClInclude Include="MergeArea.h" />
     <ClInclude Include="ModMerger.h" />
+    <ClInclude Include="ThreadPool.h" />
     <ClInclude Include="Types.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="Widget.h" />

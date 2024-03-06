@@ -28,7 +28,7 @@ private:
 
 	powe::details::DirectoryTree CreateDirTreeIntern() const;
 
-	mutable std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
 	
 	powe::details::DirectoryTree m_DirTree;
 	std::future<powe::details::DirectoryTree> m_CreateDirTreeFuture;

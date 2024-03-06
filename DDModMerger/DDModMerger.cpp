@@ -99,7 +99,8 @@ int main(int argc, char* argv[])
 	std::shared_ptr<MergeArea> mergeArea{ std::make_shared<MergeArea>(contentManager,dirTreeCreator,modMerger) };
 	std::shared_ptr<MenuBar> menuBar{ std::make_shared<MenuBar>(
 		std::make_unique<RefreshTask>(contentManager,mergeArea,dirTreeCreator),
-		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator),threadPool) };
+		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator),
+		threadPool) };
 
 
 	while (!glfwWindowShouldClose(window))

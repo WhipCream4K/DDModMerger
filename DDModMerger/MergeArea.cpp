@@ -85,6 +85,8 @@ void MergeArea::Draw()
 			// TODO: Do all the list of selectables files here
 			for (auto& [fileName, path] : modsOverwriteOrder)
 			{
+				if(path.size() <= 1)
+					continue;
 
 				if (ImGui::Selectable(fileName.c_str(), m_SelectedMainFileName == fileName))
 				{

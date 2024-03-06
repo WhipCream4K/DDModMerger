@@ -112,7 +112,7 @@ void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& so
 
 			// Check for existence
 			if (!fs::exists(comparisonPath)) {
-				std::cout << "Missing: " << comparisonPath << std::endl;
+				std::cout << "Missing from main: " << comparisonPath << std::endl;
 				continue;
 			}
 
@@ -121,6 +121,8 @@ void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& so
 			//	std::cout << "Size differs: " << comparisonPath << std::endl;
 			//}
 
+
+			// TODO: Sort which folder differ from main
 			auto hash1 = CalculateSHA256(entry.path());
 			auto hash2 = CalculateSHA256(comparisonPath);
 			if (hash1 != hash2)
@@ -164,13 +166,16 @@ std::future<void> ModMerger::UnpackAsync(std::string_view sourcePath, std::strin
 	return threadFuture;
 }
 
-std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std::vector<std::string>& pathToMods)
+std::future<void> ModMerger::MergeAsync(
+	std::string_view mainFilePath,
+	const std::vector<std::string>& pathToMods,
+	const powe::details::DirectoryTree& dirTree)
 {
 	// The merge can only happen when the file compare is done by order
 	// that means we have to wait for the first compare to finish then we can start the merge
 	// and then checks again if the next compare is done and so on
 
-	auto merge = [mainFilePath, &pathToMods, this]()
+	auto merge = [mainFilePath, &pathToMods, &dirTree, this]()
 		{
 			fs::path tempFolder{ m_OutputFolderPath };
 
@@ -188,17 +193,21 @@ std::future<void> ModMerger::MergeAsync(std::string_view mainFilePath, const std
 				auto cleanFilesToMove{ PrepareForMerge(mainFilePath, tempFolder.string(), pathToMods) };
 
 				std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(),
-					[&tempFolder, this](const std::string& file)
+					[&tempFolder, &dirTree, this](const std::string& file)
 					{
 						// fast find substring of the modsID
-						std::regex modsIDPattern{ R"([\\/](\d+)[\\/])" };
-						std::smatch match;
 
-						if (std::regex_search(file, match, modsIDPattern))
-						{
-							const std::string extractedString{ match.suffix().str() };
-							fs::rename(file, (tempFolder / extractedString));
-						}
+						//std::regex modsIDPattern{ R"([\\/](\d+)[\\/])" };
+						//std::smatch match;
+						//if (std::regex_search(file, match, modsIDPattern))
+						//{
+						//	const std::string extractedString{ match.suffix().str() };
+						//	fs::rename(file, (tempFolder / extractedString));
+						//}
+
+						std::string modName{ file.substr(tempFolder.string().size() + 1) }; // get rid of temp folder's name
+						modName = modName.substr(modName.find_first_of("/\\") + 1); // get rid of mod's name
+						fs::rename(file, (tempFolder / modName));
 					});
 			}
 
@@ -246,10 +255,14 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 
 		for (size_t i = 0; i < modsPath.size(); i++)
 		{
-			std::string modName{modsPath[i].substr(m_ModFolderPath.size(),10)}; // Due to ARCTools not recognize complicate mod's name we will use the first 10 characters
-            modName.erase(std::remove(std::execution::par_unseq,modName.begin(), modName.end(), ' '), modName.end());
+			// TODO: ARC Tool is inconsistent with the output folder name so mod folder will be name after index
+			std::string modName{ modsPath[i] };
+			modName = modName.substr(m_ModFolderPath.size() + 1, 10); // + 1 for the '/'
+			modName.erase(std::remove_if(std::execution::par_unseq,
+				modName.begin(), modName.end(), [](char c) { return std::isspace(c) || c == '.'; }), modName.end());
+
 			modsNames.emplace_back(modName);
-			UnpackBarrier(modsPath[i], (unpackFS / modsNames[i]).string(), barrier);
+			UnpackBarrier(modsPath[i], (unpackFS / modName).string(), barrier);
 		}
 
 		barrier.arrive_and_wait();
@@ -278,17 +291,24 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 	}
 
 
-	std::unordered_set<std::string>  uniqueFiles{};
+	std::unordered_map<std::string, std::string>  uniqueFiles{};
 
 	for (const auto& modFiles : modsLooseFiles) {
 		for (const auto& file : modFiles) {
 			std::string filename = fs::path(file).filename().string();
 			// Insert file into the map if not already present; this respects priority due to the loop order
-			uniqueFiles.insert(file);
+			//uniqueFiles.insert(file);
+			uniqueFiles[filename] = file;
 		}
 	}
 
-	return std::vector<std::string>(uniqueFiles.begin(), uniqueFiles.end());
+	std::vector<std::string> outMoveFiles{};
+	for (const auto& [fileName, path] : uniqueFiles)
+	{
+		outMoveFiles.emplace_back(path);
+	}
+
+	return outMoveFiles;
 
 }
 
@@ -307,7 +327,7 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 			// copy the main file to the temp folder
 			if (const auto findItr = dirTree.find(fileName); findItr != dirTree.end())
 			{
-				mergeFutures.emplace_back(MergeAsync(findItr->second, pathToMods));
+				mergeFutures.emplace_back(MergeAsync(findItr->second, pathToMods, dirTree));
 			}
 		}
 	}
@@ -403,13 +423,16 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 
 		std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(), [&dirTree, back = std::string_view(backupFolder)](const auto& value)
 			{
-				if (auto pathToFile = dirTree.find(value.first); pathToFile != dirTree.end())
+				if (value.second.size() > 1)
 				{
-					const auto& path{ pathToFile->second };
+					if (auto pathToFile = dirTree.find(value.first); pathToFile != dirTree.end())
+					{
+						const auto& path{ pathToFile->second };
 
-					const fs::path fileAfterTopLevelFolder{ path.substr(path.find(DEFAULT_DD_TOPLEVEL_FOLDER)) };
-					const std::string pathToBackupFolder{ fs::path(back / fileAfterTopLevelFolder.parent_path()).string() };
-					MakeBackup(path, pathToBackupFolder);
+						const fs::path fileAfterTopLevelFolder{ path.substr(path.find(DEFAULT_DD_TOPLEVEL_FOLDER)) };
+						const std::string pathToBackupFolder{ fs::path(back / fileAfterTopLevelFolder.parent_path()).string() };
+						MakeBackup(path, pathToBackupFolder);
+					}
 				}
 			});
 	}

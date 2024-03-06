@@ -74,7 +74,9 @@ private:
 		T&& sourcePath,
 		U&& targetPath);
 
-	std::future<void> MergeAsync(std::string_view mainFilePath, const std::vector<std::string>& pathToMods);
+	std::future<void> MergeAsync(std::string_view mainFilePath, 
+		const std::vector<std::string>& pathToMods,
+		const powe::details::DirectoryTree& dirTree);
 
 	std::vector<std::string> PrepareForMerge(
 		std::string_view mainFilePath,
@@ -85,7 +87,7 @@ private:
 		const powe::details::DirectoryTree& dirTree,
 		const powe::details::ModsOverwriteOrder& overwriteOrder);
 
-	mutable std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
 
 	std::future<void> m_MergeTask;
 
