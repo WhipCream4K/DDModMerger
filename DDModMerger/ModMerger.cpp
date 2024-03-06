@@ -238,19 +238,17 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 
 	// Unpack files
 	{
-		std::vector<std::future<void>> copyFutures;
-		copyFutures.reserve(modsPath.size());
-		copyFutures.emplace_back(UnpackAsync(mainFilePath, unpackPath));
+		// we expect all mods file and one main file to unpack and main thread
+		std::barrier barrier{ uint32_t(modsPath.size() + 2) };
+
+		UnpackBarrier(mainFilePath, unpackPath, barrier);
 
 		for (size_t i = 0; i < modsPath.size(); i++)
 		{
-			copyFutures.emplace_back(UnpackAsync(modsPath[i], (unpackFS / std::to_string(i)).string()));
+			UnpackBarrier(modsPath[i], (unpackFS / std::to_string(i)).string(), barrier);
 		}
 
-		for (auto& future : copyFutures)
-		{
-			future.get();
-		}
+		barrier.arrive_and_wait();
 	}
 
 
@@ -438,5 +436,16 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 		m_MergeTask = m_ThreadPool->enqueue(merge);
 	}
 
+}
+
+bool ModMerger::IsARCToolExist() const
+{
+	const fs::path arctool{ m_ARCToolScriptPath };
+	return fs::exists(arctool);
+}
+
+bool ModMerger::IsReadyToMerge() const
+{
+	return !m_MergeTask.valid();
 }
 

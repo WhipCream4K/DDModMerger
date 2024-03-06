@@ -27,7 +27,35 @@ void MenuBar::Draw()
 		// Render the merge confirmation box
 		if (m_MergeButtonPressed)
 		{
-			ImGui::OpenPopup("Merge Confirmation");
+			if (m_MergeTask->IsARCToolExist() && m_MergeTask->IsMergeReady())
+			{
+				ImGui::OpenPopup("Merge Confirmation");
+			}
+			else
+			{
+				ImGui::OpenPopup("Merge Error");
+			}
+
+			if (ImGui::BeginPopupModal("Merge Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+			{
+
+				if (!m_MergeTask->IsARCToolExist())
+				{
+					ImGui::Text("ARC Tool not found");
+				}
+				else if (!m_MergeTask->IsMergeReady())
+				{
+					ImGui::Text("Merge operation is already started");
+				}
+
+				if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || 
+					ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+				{
+					m_MergeButtonPressed = false;
+				}
+
+				ImGui::EndPopup();
+			}
 
 			if (ImGui::BeginPopupModal("Merge Confirmation", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 			{
@@ -91,6 +119,16 @@ void RefreshTask::Execute()
 	m_ContentManager->LoadModsContentAsync();
 	m_MergeArea->SetMergeAreaVisible(true);
 	m_DirTreeCreator->CreateDirTreeAsync();
+}
+
+bool MergeTask::IsARCToolExist() const
+{
+	return m_ModMerger->IsARCToolExist();
+}
+
+bool MergeTask::IsMergeReady() const
+{
+	return m_ModMerger->IsReadyToMerge();
 }
 
 void MergeTask::Execute()

@@ -397,6 +397,9 @@ FodyWeavers.xsd
 openssl-3
 TestFolder
 
+ARCtool.exe
+pc-dd.bat
+
 # JetBrains Rider
 <<<<<<< HEAD
 *.sln.iml

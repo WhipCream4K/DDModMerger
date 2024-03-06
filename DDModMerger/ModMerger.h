@@ -4,6 +4,7 @@
 #include <memory>
 #include <filesystem>
 #include <iostream>
+#include <barrier>
 
 #include "CVarReader.h"
 #include "Types.h"
@@ -51,12 +52,20 @@ public:
 		bool backup = true,
 		bool measureTime = true);
 
+	bool IsARCToolExist() const;
+	bool IsReadyToMerge() const;
 
 private:
 
 	template<typename T, typename U>
 	std::future<void> UnpackAsync(T&& sourcePath, U&& targetPath);
 	std::future<void> UnpackAsync(std::string_view sourcePath, std::string_view targetPath);
+
+	template<typename T, typename U>
+	void UnpackBarrier(
+		T&& sourcePath,
+		U&& targetPath,
+		std::barrier<>& barrier);
 
 	template<typename T, typename U>
 	std::future<std::vector<std::string>> CompareDirectoriesAsync(
@@ -120,6 +129,23 @@ inline std::future<void> ModMerger::UnpackAsync(T&& sourcePath, U&& targetPath)
 		};
 
 	return m_ThreadPool->enqueue(copyAndUnpack);
+}
+
+template<typename T, typename U>
+inline void ModMerger::UnpackBarrier(T&& sourcePath, U&& targetPath, std::barrier<>& barrier)
+{
+	auto copyAndUnpack = [
+		lsourcePath = std::forward<T>(sourcePath),
+			ltargetPath = std::forward<U>(targetPath),
+		arctool = std::string_view(m_ARCToolScriptPath),&barrier]() -> void
+		{
+			MakeBackup(lsourcePath, ltargetPath);
+			const std::filesystem::path newBackupFilePath{ std::filesystem::path(ltargetPath) / std::filesystem::path(lsourcePath).filename() };
+			CallARCTool(newBackupFilePath.string(), arctool);
+			barrier.arrive_and_wait();
+		};
+
+	m_ThreadPool->enqueue_detach(copyAndUnpack);
 }
 
 template<typename T, typename U>

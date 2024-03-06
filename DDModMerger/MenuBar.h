@@ -46,6 +46,9 @@ public:
 	{
 	}
 
+	bool IsARCToolExist() const;
+	bool IsMergeReady() const;
+
 	virtual void Execute();
 
 	~MergeTask() = default;
