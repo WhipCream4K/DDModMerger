@@ -80,8 +80,8 @@ private:
 	void MergeContentIntern(
 		const powe::details::DirectoryTree& dirTree,
 		const powe::details::ModsOverwriteOrder& overwriteOrder);
-
-	std::future<void> m_MergeTask;
+	
+	std::atomic_int32_t m_ActiveTasks{};
 
 	std::string m_ModFolderPath;
 	std::string m_ARCToolScriptPath;
@@ -121,7 +121,8 @@ inline void ModMerger::UnpackBarrier(T&& sourcePath, U&& targetPath, std::barrie
 			barrier.arrive_and_wait();
 		};
 
-	std::jthread(copyAndUnpack).detach();
+	// I don't want to unpack 100 of files in 100 threads, so I'm using EnqueueDetach
+	ThreadPool::EnqueueDetach(copyAndUnpack);
 }
 
 template<typename T, typename U>

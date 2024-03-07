@@ -260,13 +260,10 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 
 	// Unpack files
 	{
-		//std::vector<std::future<void>> unpackFutures{};
-
 		// we expect all mods file and one main file to unpack and main thread
 		std::barrier barrier{ uint32_t(modsPath.size() + 2) };
 
 		UnpackBarrier(mainFilePath, unpackPath, barrier);
-		//unpackFutures.emplace_back(UnpackAsync(mainFilePath, unpackPath));
 
 		for (size_t i = 0; i < modsPath.size(); i++)
 		{
@@ -277,16 +274,10 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 				modName.begin(), modName.end(), [](char c) { return std::isspace(c) || c == '.'; }), modName.end());
 
 			modsNames.emplace_back(modName);
-			//unpackFutures.emplace_back(UnpackAsync(modsPath[i], (unpackFS / modName).string()));
 			UnpackBarrier(modsPath[i], (unpackFS / modName).string(), barrier);
 		}
 
 		barrier.arrive_and_wait();
-
-		//for (auto& future : unpackFutures)
-		//{
-		//	future.get();
-		//}
 	}
 
 
@@ -358,7 +349,7 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 		future.get();
 	}
 
-	m_MergeTask = std::future<void>{};
+	m_ActiveTasks.fetch_sub(1, std::memory_order_relaxed);
 }
 
 ModMerger::ModMerger(
@@ -407,7 +398,7 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 		return;
 	}
 
-	if (m_MergeTask.valid())
+	if (!IsReadyToMerge())
 	{
 		std::cerr << "Merge task is already running\n";
 		return;
@@ -425,7 +416,11 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 				std::cout << "Merge Elapsed time: " << elapsed.count() << "s\n";
 			};
 
-		m_MergeTask = std::async(std::launch::async, merge);
+		// Single thread it's fine
+		m_ActiveTasks.fetch_add(1, std::memory_order_relaxed);
+		std::jthread(merge).detach();
+
+
 	}
 	else
 	{
@@ -434,7 +429,8 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 				MergeContentIntern(dirTree, overwriteOrder);
 			};
 
-		m_MergeTask = std::async(std::launch::async, merge);
+		m_ActiveTasks.fetch_add(1, std::memory_order_relaxed);
+		std::jthread(merge).detach();
 	}
 }
 
@@ -446,6 +442,6 @@ bool ModMerger::IsARCToolExist() const
 
 bool ModMerger::IsReadyToMerge() const
 {
-	return !m_MergeTask.valid();
+	return m_ActiveTasks.load(std::memory_order_relaxed) == 0;
 }
 
