@@ -32,9 +32,9 @@ public:
 
 private:
 
-	std::shared_ptr<ContentManager> m_ContentManager;
-	std::shared_ptr<DirTreeCreator> m_DirTreeCreator;
-	std::shared_ptr<ModMerger> m_ModMerger;
+	std::weak_ptr<ContentManager> m_ContentManager;
+	std::weak_ptr<DirTreeCreator> m_DirTreeCreator;
+	std::weak_ptr<ModMerger> m_ModMerger;
 
 	powe::details::ModsOverwriteOrder m_ModsOverwriteOrderTemp{};
 	const powe::details::DirectoryTree* m_DirTreeTemp{};

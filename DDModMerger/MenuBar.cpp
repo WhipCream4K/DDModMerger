@@ -5,20 +5,21 @@
 #include "MergeArea.h"
 #include "DirTreeCreator.h"
 #include "ModMerger.h"
+#include "ThreadPool.h"
+#include "FileCloneUtility.h"
 
 void MenuBar::Draw()
 {
 
 	if (ImGui::Button("Refresh"))
 	{
-		if (m_ThreadCount != m_ThreadPool->size())
+		if (m_MergeTask->IsFinished())
 		{
-			m_ThreadPool = std::make_shared<powe::ThreadPool>(m_ThreadCount);
-			m_RefreshTask->SetThreadPool(m_ThreadPool);
-			m_MergeTask->SetThreadPool(m_ThreadPool);
+			ThreadPool::Init(m_ThreadCount);
 		}
 
 		m_RefreshTask->Execute();
+		m_RefButtonPressed = true;
 	}
 
 	ImGui::SameLine(); // Align the next item to the right of the previous item
@@ -34,7 +35,7 @@ void MenuBar::Draw()
 		// Render the merge confirmation box
 		if (m_MergeButtonPressed)
 		{
-			if (m_MergeTask->IsARCToolExist() && m_MergeTask->IsMergeReady())
+			if (m_MergeTask->IsARCToolExist() && m_MergeTask->IsFinished() && m_RefButtonPressed)
 			{
 				ImGui::OpenPopup("Merge Confirmation");
 			}
@@ -45,12 +46,11 @@ void MenuBar::Draw()
 
 			if (ImGui::BeginPopupModal("Merge Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 			{
-
 				if (!m_MergeTask->IsARCToolExist())
 				{
 					ImGui::Text("ARC Tool not found");
 				}
-				else if (!m_MergeTask->IsMergeReady())
+				else if (!m_MergeTask->IsFinished())
 				{
 					ImGui::Text("Merge operation is already started");
 				}
@@ -59,6 +59,11 @@ void MenuBar::Draw()
 					ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 				{
 					m_MergeButtonPressed = false;
+				}
+
+				if (!m_RefButtonPressed)
+				{
+					ImGui::Text("No mods to overwrite");
 				}
 
 				ImGui::EndPopup();
@@ -71,18 +76,14 @@ void MenuBar::Draw()
 
 				if (ImGui::Button("Yes", ImVec2(120.0f, 0.0f)))
 				{
-					// Close the merge confirmation box
-					if (m_ThreadPool->size() != m_ThreadCount)
-					{
-						m_ThreadPool = std::make_shared<powe::ThreadPool>(m_ThreadCount);
-						m_MergeTask->SetThreadPool(m_ThreadPool);
-					}
+
+					ThreadPool::Init(m_ThreadCount);
 
 					m_MergeTask->Execute();
 					m_MergeButtonPressed = false;
 				}
 				ImGui::SameLine();
-				if (ImGui::Button("No", ImVec2(120, 0)))
+				if (ImGui::Button("No", ImVec2(120.0f, 0)))
 				{
 					// Close the merge confirmation box
 					m_MergeButtonPressed = false;
@@ -125,40 +126,93 @@ void MenuBar::Draw()
 			newThreadCount = 1;
 		}
 	}
+
+	ImGui::SameLine();
+
+	// TODO: display mods that is inside mods folder
+	ImGui::Checkbox("Show Non-Overwrite mods", &m_ShowNonOverwriteMods);
+
+	ImGui::SameLine();
+
+	if (ImGui::Button("Copy..."))
+	{
+		ImGui::OpenPopup("##Copy");
+	}
+
+	// TODO: Maybe do copy task
+	if (ImGui::BeginPopup("##Copy"))
+	{
+		if(ImGui::MenuItem("Copy merge file to game folder"))
+		{
+
+		}
+
+		if(ImGui::MenuItem("Copy backup file to game folder"))
+		{
+			
+		}
+
+		if(ImGui::MenuItem("Copy all mod files to game folder"))
+		{
+			
+		}
+		
+		ImGui::EndPopup();
+	}
 }
 
 void RefreshTask::Execute()
 {
-	m_ContentManager->LoadModsContentAsync();
-	m_MergeArea->SetMergeAreaVisible(true);
-	m_DirTreeCreator->CreateDirTreeAsync();
-}
+	auto contentManager = m_ContentManager.lock();
+	auto mergeArea = m_MergeArea.lock();
+	auto dirTreeCreator = m_DirTreeCreator.lock();
 
-void RefreshTask::SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool)
-{
-	m_ContentManager->SetThreadPool(threadPool);
-	m_DirTreeCreator->SetThreadPool(threadPool);
-}
-
-void MergeTask::SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool)
-{
-	m_ModMerger->SetThreadPool(threadPool);
+	if (contentManager && mergeArea && dirTreeCreator)
+	{
+		contentManager->LoadModsContentAsync();
+		mergeArea->SetMergeAreaVisible(true);
+		dirTreeCreator->CreateDirTreeAsync();
+	}
 }
 
 bool MergeTask::IsARCToolExist() const
 {
-	return m_ModMerger->IsARCToolExist();
+	return std::filesystem::exists(m_ARCToolPath);
 }
 
-bool MergeTask::IsMergeReady() const
+bool MergeTask::IsFinished() const
 {
-	return m_ModMerger->IsReadyToMerge();
+	if (auto modMerger = m_ModMerger.lock())
+	{
+		return modMerger->IsReadyToMerge();
+	}
+
+	return false;
 }
+
 
 void MergeTask::Execute()
 {
-	m_ModMerger->MergeContentAsync(
-		m_DirTreeCreator->GetDirTree(),
-		m_MergeArea->GetUserModsOverwriteOrder(),
-		true);
+	auto modMerger = m_ModMerger.lock();
+	auto mergeArea = m_MergeArea.lock();
+	auto dirTreeCreator = m_DirTreeCreator.lock();
+	auto fileCloneUtility = m_CloneUtility.lock();
+
+	if (modMerger && mergeArea && dirTreeCreator)
+	{
+		const auto& userOverwriteOrder{ mergeArea->GetUserModsOverwriteOrder() };
+		const auto& dirTree{ dirTreeCreator->GetDirTree() };
+
+		if (fileCloneUtility)
+		{
+			for (const auto& [fileName, paths] : userOverwriteOrder)
+			{
+				fileCloneUtility->BackupMainFile(dirTree, paths);
+			}
+		}
+
+		modMerger->MergeContentAsync(
+			dirTreeCreator->GetDirTree(),
+			mergeArea->GetUserModsOverwriteOrder(), true);
+	}
 }

@@ -12,7 +12,6 @@
 #include "nlohmann/json.hpp"
 #include "EnvironmentVariables.h"
 #include "openssl/sha.h"
-#include "thread_pool/thread_pool.h"
 #include "utils.h"
 
 #ifdef _WIN32
@@ -35,6 +34,15 @@ void RenameFileToFolder(const fs::path& sourceFilePath, const fs::path& destinat
 	const fs::path dest{ destinationFolder / sourceFilePath.filename() };
 	fs::rename(sourceFilePath, dest);
 }
+
+
+void SetConsoleColor(uint16_t color) {
+#ifdef _WIN32
+	HANDLE hConsole = GetStdHandle(STD_ERROR_HANDLE);
+	SetConsoleTextAttribute(hConsole, color);
+#endif
+}
+
 
 /// <summary>
 /// This function will call ARCTool from FluffyQuack to unpack our arc files
@@ -73,8 +81,27 @@ void CallARCTool(const fs::path& itemPath, const fs::path& arctoolPath)
 		std::cerr << "CreateProcess failed (" << GetLastError() << ").\n";
 	}
 	else {
-		// Wait until child process exits
-		WaitForSingleObject(pi.hProcess, INFINITE);
+
+		// Assuming pi.hProcess is the handle to the external process
+		DWORD timeout = (DWORD)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::minutes(3)).count(); // Timeout of 3 minutes
+		DWORD result = WaitForSingleObject(pi.hProcess, timeout);
+
+		if (result == WAIT_TIMEOUT) {
+			DWORD exitCode;
+			if (!GetExitCodeProcess(pi.hProcess, &exitCode)) {
+				SetConsoleColor(FOREGROUND_RED); // Set text color to red
+				std::cerr << "Failed to get exit code (" << GetLastError() << ").\n";
+				SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); // Reset text color to default
+			}
+			else if (exitCode == STILL_ACTIVE) {
+				// Process is still running, attempt to terminate
+				if (!TerminateProcess(pi.hProcess, 0)) {
+					SetConsoleColor(FOREGROUND_RED); // Set text color to red
+					std::cerr << "Failed to terminate the process (" << GetLastError() << ").\n";
+					SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); // Reset text color to default
+				}
+			}
+		}
 
 		// Close process and thread handles
 		CloseHandle(pi.hProcess);
@@ -103,6 +130,7 @@ std::vector<unsigned char> CalculateSHA256(const fs::path& filePath) {
 
 void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& source, std::string_view target, std::shared_ptr<CompareDirectoriesArgs> args)
 {
+
 	for (const auto& entry : fs::directory_iterator(source)) {
 
 		if (entry.is_regular_file()) {
@@ -116,13 +144,7 @@ void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& so
 				continue;
 			}
 
-			// Quick check: Compare file sizes
-			//if (fs::file_size(entry.path()) != fs::file_size(comparisonPath)) {
-			//	std::cout << "Size differs: " << comparisonPath << std::endl;
-			//}
 
-
-			// TODO: Sort which folder differ from main
 			auto hash1 = CalculateSHA256(entry.path());
 			auto hash2 = CalculateSHA256(comparisonPath);
 			if (hash1 != hash2)
@@ -139,7 +161,7 @@ void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& so
 		else if (entry.is_directory())
 		{
 			args->activeTasks.get().fetch_add(1, std::memory_order_relaxed);
-			args->threadPool->enqueue_detach(RecursiveCompareDirAsync, baseSource, entry.path().string(), target, args);
+			ThreadPool::EnqueueDetach(RecursiveCompareDirAsync, baseSource, entry.path().string(), target, args);
 		}
 	}
 
@@ -161,7 +183,7 @@ std::future<void> ModMerger::UnpackAsync(std::string_view sourcePath, std::strin
 			threadPromise->set_value();
 		};
 
-	m_ThreadPool->enqueue_detach(copyAndUnpack);
+	ThreadPool::EnqueueDetach(copyAndUnpack);
 
 	return threadFuture;
 }
@@ -177,34 +199,23 @@ std::future<void> ModMerger::MergeAsync(
 
 	auto merge = [mainFilePath, &pathToMods, &dirTree, this]()
 		{
-			fs::path tempFolder{ m_OutputFolderPath };
+			fs::path tempFolder{ "./mergeRoom" };
 
 			const fs::path mainFileFS{ mainFilePath };
 			const std::string mainFileName{ mainFileFS.stem().string() };
 
-			tempFolder = tempFolder / "temp" / mainFileName;
+			tempFolder /= mainFileName;
 
 			const fs::path mainUnpackFolder{ (tempFolder / mainFileName) };
 
 
 			{
-
 				// now we just go a list of files that we need to move to sourcePath
 				auto cleanFilesToMove{ PrepareForMerge(mainFilePath, tempFolder.string(), pathToMods) };
 
 				std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(),
 					[&tempFolder, &dirTree, this](const std::string& file)
 					{
-						// fast find substring of the modsID
-
-						//std::regex modsIDPattern{ R"([\\/](\d+)[\\/])" };
-						//std::smatch match;
-						//if (std::regex_search(file, match, modsIDPattern))
-						//{
-						//	const std::string extractedString{ match.suffix().str() };
-						//	fs::rename(file, (tempFolder / extractedString));
-						//}
-
 						std::string modName{ file.substr(tempFolder.string().size() + 1) }; // get rid of temp folder's name
 						modName = modName.substr(modName.find_first_of("/\\") + 1); // get rid of mod's name
 						fs::rename(file, (tempFolder / modName));
@@ -218,7 +229,7 @@ std::future<void> ModMerger::MergeAsync(
 			// should be out/nativePC/rom
 			{
 				fs::path outFilePath{ m_OutputFolderPath };
-				outFilePath /= mainFilePath.substr(mainFilePath.find(DEFAULT_DD_TOPLEVEL_FOLDER));
+				outFilePath /= mainFilePath.substr(m_SearchFolderPath.size() + 1); // get rid of top level folder
 				fs::create_directories(outFilePath.parent_path());
 				fs::rename((tempFolder / mainFileFS.filename()), outFilePath);
 			}
@@ -227,7 +238,7 @@ std::future<void> ModMerger::MergeAsync(
 		};
 
 
-	return m_ThreadPool->enqueue(merge);
+	return std::async(std::launch::async, merge);
 }
 
 std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePath, std::string_view unpackPath, const std::vector<std::string>& modsPath)
@@ -246,12 +257,16 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 	std::vector<std::string> modsNames{};
 	modsNames.reserve(modsPath.size());
 
+
 	// Unpack files
 	{
+		//std::vector<std::future<void>> unpackFutures{};
+
 		// we expect all mods file and one main file to unpack and main thread
 		std::barrier barrier{ uint32_t(modsPath.size() + 2) };
 
 		UnpackBarrier(mainFilePath, unpackPath, barrier);
+		//unpackFutures.emplace_back(UnpackAsync(mainFilePath, unpackPath));
 
 		for (size_t i = 0; i < modsPath.size(); i++)
 		{
@@ -262,10 +277,16 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 				modName.begin(), modName.end(), [](char c) { return std::isspace(c) || c == '.'; }), modName.end());
 
 			modsNames.emplace_back(modName);
+			//unpackFutures.emplace_back(UnpackAsync(modsPath[i], (unpackFS / modName).string()));
 			UnpackBarrier(modsPath[i], (unpackFS / modName).string(), barrier);
 		}
 
 		barrier.arrive_and_wait();
+
+		//for (auto& future : unpackFutures)
+		//{
+		//	future.get();
+		//}
 	}
 
 
@@ -341,20 +362,12 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 }
 
 ModMerger::ModMerger(
-	const CVarReader& cVarReader,
-	std::shared_ptr<powe::ThreadPool>& threadPool)
-	: m_ThreadPool(threadPool)
+	const CVarReader& cVarReader)
 {
 	m_ModFolderPath = cVarReader.ReadCVar("-mods");
 	m_OutputFolderPath = cVarReader.ReadCVar("-out");
 	m_ARCToolScriptPath = cVarReader.ReadCVar("-arctool");
 	m_SearchFolderPath = cVarReader.ReadCVar("-path");
-
-
-	if (!threadPool)
-	{
-		throw std::runtime_error("Error: Thread pool is not initialized");
-	}
 
 	// check all variables if they are empty then throw an exception
 	if (m_ModFolderPath.empty() || m_OutputFolderPath.empty() || m_ARCToolScriptPath.empty())
@@ -363,29 +376,12 @@ ModMerger::ModMerger(
 	}
 }
 
-void ModMerger::MergeContent(const powe::details::DirectoryTree& dirTree, const powe::details::ModsOverwriteOrder& overwriteOrder, bool backup, bool measureTime)
+void ModMerger::MergeContent(const powe::details::DirectoryTree& dirTree, const powe::details::ModsOverwriteOrder& overwriteOrder, bool measureTime)
 {
 	if (overwriteOrder.empty())
 	{
 		std::cerr << "No mods to merge\n";
 		return;
-	}
-
-	if (backup)
-	{
-		const std::string backupFolder{ m_OutputFolderPath + "/backup" };
-
-		std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(), [&dirTree, back = std::string_view(backupFolder)](const auto& value)
-			{
-				if (auto pathToFile = dirTree.find(value.first); pathToFile != dirTree.end())
-				{
-					const auto& path{ pathToFile->second };
-
-					const fs::path fileAfterTopLevelFolder{ path.substr(path.find(DEFAULT_DD_TOPLEVEL_FOLDER)) };
-					const std::string pathToBackupFolder{ fs::path(back / fileAfterTopLevelFolder.parent_path()).string() };
-					MakeBackup(path, pathToBackupFolder);
-				}
-			});
 	}
 
 	if (measureTime)
@@ -403,7 +399,7 @@ void ModMerger::MergeContent(const powe::details::DirectoryTree& dirTree, const 
 	}
 }
 
-void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, const powe::details::ModsOverwriteOrder& overwriteOrder, bool backup, bool measureTime)
+void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, const powe::details::ModsOverwriteOrder& overwriteOrder, bool measureTime)
 {
 	if (overwriteOrder.empty())
 	{
@@ -415,26 +411,6 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 	{
 		std::cerr << "Merge task is already running\n";
 		return;
-	}
-
-	if (backup)
-	{
-		const std::string backupFolder{ m_OutputFolderPath + "/backup" };
-
-		std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(), [&dirTree, back = std::string_view(backupFolder)](const auto& value)
-			{
-				if (value.second.size() > 1)
-				{
-					if (auto pathToFile = dirTree.find(value.first); pathToFile != dirTree.end())
-					{
-						const auto& path{ pathToFile->second };
-
-						const fs::path fileAfterTopLevelFolder{ path.substr(path.find(DEFAULT_DD_TOPLEVEL_FOLDER)) };
-						const std::string pathToBackupFolder{ fs::path(back / fileAfterTopLevelFolder.parent_path()).string() };
-						MakeBackup(path, pathToBackupFolder);
-					}
-				}
-			});
 	}
 
 	if (measureTime)
@@ -449,7 +425,7 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 				std::cout << "Merge Elapsed time: " << elapsed.count() << "s\n";
 			};
 
-		m_MergeTask = m_ThreadPool->enqueue(merge);
+		m_MergeTask = std::async(std::launch::async, merge);
 	}
 	else
 	{
@@ -458,7 +434,7 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 				MergeContentIntern(dirTree, overwriteOrder);
 			};
 
-		m_MergeTask = m_ThreadPool->enqueue(merge);
+		m_MergeTask = std::async(std::launch::async, merge);
 	}
 }
 

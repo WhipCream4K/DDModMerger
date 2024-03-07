@@ -6,10 +6,12 @@
 #include "nlohmann/json.hpp"
 #include "EnvironmentVariables.h"
 #include "utils.h"
-#include "thread_pool/thread_pool.h"
+#include "ThreadPool.h"
 
 namespace fs = std::filesystem;
 
+constexpr const char* DirTreeFolder = "./cache";
+constexpr const char* DirTreeJSONFileName = "dirTree.json";
 
 // Read file from json and return an unordered_map of file names and file paths
 // could be empty if file is not found or empty
@@ -49,23 +51,21 @@ std::unordered_map<std::string, std::string> ReadJSONFile(const std::string& fil
 }
 
 
-DirTreeCreator::DirTreeCreator(const CVarReader& cVarReader, const std::shared_ptr<powe::ThreadPool>& threadPool)
-	: m_ThreadPool(threadPool)
+DirTreeCreator::DirTreeCreator(const CVarReader& cVarReader)
 {
 	m_SearchFolderPath = cVarReader.ReadCVar("-path");
 	m_InterestedExtension = cVarReader.ReadCVar("-ext");
 	m_OutputFilePath = cVarReader.ReadCVar("-out");
 
-	if (!m_ThreadPool)
-	{
-		throw std::runtime_error("Error: ThreadPool is not initialized");
-	}
-
 	const fs::path searchFolderPath{ m_SearchFolderPath };
-	if (searchFolderPath.string().find(DEFAULT_DD_TOPLEVEL_FOLDER) == std::string::npos)
+	if(!fs::exists(searchFolderPath / DEFAULT_DD_TOPLEVEL_FOLDER))
 	{
 		throw std::runtime_error("Error: -path should be a subfolder of " + std::string(DEFAULT_DD_TOPLEVEL_FOLDER));
 	}
+
+	//if (searchFolderPath.string().find(DEFAULT_DD_TOPLEVEL_FOLDER) == std::string::npos)
+	//{
+	//}
 
 	// check all variables if they are empty then throw an exception
 	if (m_SearchFolderPath.empty() || m_InterestedExtension.empty() || m_OutputFilePath.empty()) {
@@ -104,7 +104,7 @@ void DirTreeCreator::CreateDirTreeAsync(bool measureTime)
 				return fileMap;
 			};
 
-		m_CreateDirTreeFuture = m_ThreadPool->enqueue(createDirTree);
+		m_CreateDirTreeFuture = ThreadPool::Enqueue(createDirTree);
 	}
 
 	auto createDirTree = [this]() -> powe::details::DirectoryTree
@@ -112,7 +112,7 @@ void DirTreeCreator::CreateDirTreeAsync(bool measureTime)
 			return CreateDirTreeIntern();
 		};
 
-	m_CreateDirTreeFuture = m_ThreadPool->enqueue(createDirTree);
+	m_CreateDirTreeFuture = ThreadPool::Enqueue(createDirTree);
 
 }
 
@@ -127,7 +127,8 @@ const powe::details::DirectoryTree& DirTreeCreator::GetDirTree()
 
 powe::details::DirectoryTree DirTreeCreator::CreateDirTreeIntern() const
 {
-	const fs::path outputPath{ m_OutputFilePath + DirTreeFolder + "/" + DirTreeJSONFileName };
+	fs::path outputPath{ DirTreeFolder };
+	outputPath /= DirTreeJSONFileName;
 
 	// Check if the output file already exists
 	if (fs::exists(outputPath)) {
@@ -142,7 +143,10 @@ powe::details::DirectoryTree DirTreeCreator::CreateDirTreeIntern() const
 		return tempFileMap;
 	}
 
-	auto outFileMap{ RecursiveFileSearch(m_SearchFolderPath, m_InterestedExtension, m_ThreadPool) };
+	fs::path searchFolder{m_SearchFolderPath};
+	searchFolder /= DEFAULT_DD_TOPLEVEL_FOLDER;
+
+	auto outFileMap{ RecursiveFileSearch(searchFolder.string() , m_InterestedExtension) };
 
 	std::ofstream outputFile(outputPath);
 

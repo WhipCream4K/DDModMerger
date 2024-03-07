@@ -21,6 +21,4 @@ namespace powe
 		using ModsOverwriteOrder = std::unordered_map<std::string, std::vector<std::string>>;
 		using DirectoryTree = std::unordered_map<std::string, std::string>;
 	}
-
-	using ThreadPool = dp::thread_pool<std::function<void()>,std::jthread>;
 }

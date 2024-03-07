@@ -9,10 +9,11 @@
 #include "ModMerger.h"
 #include "ContentManager.h"
 #include "Types.h"
-#include "thread_pool/thread_pool.h"
+#include "ThreadPool.h"
 #include "CVarReader.h"
 #include "MenuBar.h"
 #include "MergeArea.h"
+#include "FileCloneUtility.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
@@ -35,7 +36,7 @@ enum UserContextVariable
 	ModsOverwriteSelection
 };
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+void framebuffer_size_callback([[maybe_unused]] GLFWwindow* window, int width, int height)
 {
 	// Calculate the new size of the ImGui window
 	ImVec2 newSize = ImVec2(float(width), float(height));
@@ -90,17 +91,19 @@ int main(int argc, char* argv[])
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
 	// Initialize DDModManager Global Context Variables
-	std::shared_ptr<powe::ThreadPool>  threadPool{ std::make_shared<powe::ThreadPool>(std::thread::hardware_concurrency()) };
-	std::shared_ptr<ContentManager> contentManager{ std::make_shared<ContentManager>(cvReader,threadPool) };
-	std::shared_ptr<DirTreeCreator> dirTreeCreator{ std::make_shared<DirTreeCreator>(cvReader, threadPool) };
-	std::shared_ptr<ModMerger> modMerger{ std::make_shared<ModMerger>(cvReader,threadPool) };
+
+	ThreadPool::Init(std::thread::hardware_concurrency());
+
+	std::shared_ptr<ContentManager> contentManager{ std::make_shared<ContentManager>(cvReader) };
+	std::shared_ptr<DirTreeCreator> dirTreeCreator{ std::make_shared<DirTreeCreator>(cvReader) };
+	std::shared_ptr<FileCloneUtility> cloneUtility{ std::make_shared<FileCloneUtility>(cvReader) };
+	std::shared_ptr<ModMerger> modMerger{ std::make_shared<ModMerger>(cvReader) };
 
 	// Initialize Widgets
 	std::shared_ptr<MergeArea> mergeArea{ std::make_shared<MergeArea>(contentManager,dirTreeCreator,modMerger) };
 	std::shared_ptr<MenuBar> menuBar{ std::make_shared<MenuBar>(
 		std::make_unique<RefreshTask>(contentManager,mergeArea,dirTreeCreator),
-		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator),
-		threadPool) };
+		std::make_unique<MergeTask>(modMerger,mergeArea,dirTreeCreator,cloneUtility,cvReader.ReadCVar("-arctool"))) };
 
 
 	while (!glfwWindowShouldClose(window))
@@ -128,6 +131,7 @@ int main(int argc, char* argv[])
 
 			ImGui::EndChild();
 		}
+
 
 		ImGui::End();
 

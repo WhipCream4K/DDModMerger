@@ -12,23 +12,16 @@ class DirTreeCreator
 {
 public:
 
-	DirTreeCreator(const CVarReader& cVarReader, const std::shared_ptr<powe::ThreadPool>& threadPool);
+	DirTreeCreator(const CVarReader& cVarReader);
 
 	powe::details::DirectoryTree CreateDirTree(bool measureTime = true) const;
 	void CreateDirTreeAsync(bool measureTime = true);
 
 	const powe::details::DirectoryTree& GetDirTree();
 
-	static constexpr const char* DirTreeFolder = "/cache";
-	static constexpr const char* DirTreeJSONFileName = "dirTree.json";
-
-	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool) { m_ThreadPool = threadPool; }
-
 private:
 
 	powe::details::DirectoryTree CreateDirTreeIntern() const;
-
-	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
 	
 	powe::details::DirectoryTree m_DirTree;
 	std::future<powe::details::DirectoryTree> m_CreateDirTreeFuture;

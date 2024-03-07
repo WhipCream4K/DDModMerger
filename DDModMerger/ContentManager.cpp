@@ -4,13 +4,12 @@
 #include <filesystem>
 
 #include "utils.h"
-#include "thread_pool/thread_pool.h"
+#include "ThreadPool.h"
 
 namespace fs = std::filesystem;
 
-ContentManager::ContentManager(const CVarReader& cVarReader, const std::shared_ptr<powe::ThreadPool>& threadPool)
-	: m_ThreadPool(threadPool)
-	, m_ModsFilePath(cVarReader.ReadCVar("-mods"))
+ContentManager::ContentManager(const CVarReader& cVarReader)
+	: m_ModsFilePath(cVarReader.ReadCVar("-mods"))
 	, m_InterestedExtension(cVarReader.ReadCVar("-ext"))
 {
 	if (m_InterestedExtension.empty() || m_ModsFilePath.empty())
@@ -24,8 +23,7 @@ void ContentManager::LoadModsContentAsync()
 {
 	auto loadModsContent = [
 		modsPath = std::string_view(m_ModsFilePath),
-			extension = std::string_view(m_InterestedExtension),
-			threadPool = m_ThreadPool]() -> powe::details::ModsOverwriteOrder
+			extension = std::string_view(m_InterestedExtension)]() -> powe::details::ModsOverwriteOrder
 		{
 			powe::details::ModsOverwriteOrder modsOverwriteOrder;
 			std::vector<std::future<powe::details::DirectoryTree>> searchFutures;
@@ -35,9 +33,10 @@ void ContentManager::LoadModsContentAsync()
 				// for every directory, we'll initiate an async call
 				if (entry.is_directory())
 				{
-					searchFutures.emplace_back(threadPool->enqueue(
+					searchFutures.emplace_back(
+						ThreadPool::Enqueue(
 						RecursiveFileSearch,
-						entry.path().string(), extension, threadPool));
+						entry.path().string(),extension));
 				}
 			}
 
@@ -53,7 +52,7 @@ void ContentManager::LoadModsContentAsync()
 			return modsOverwriteOrder;
 		};
 
-	m_LoadModsContentFuture = m_ThreadPool->enqueue(loadModsContent);
+	m_LoadModsContentFuture = ThreadPool::Enqueue(loadModsContent);
 }
 
 const powe::details::ModsOverwriteOrder& ContentManager::GetAllModsOverwriteOrder()

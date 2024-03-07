@@ -23,35 +23,36 @@ public:
 
 	virtual void Execute();
 
-	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool);
-
 	~RefreshTask() = default;
 
 private:
 
-	std::shared_ptr<ContentManager> m_ContentManager;
-	std::shared_ptr<MergeArea> m_MergeArea;
-	std::shared_ptr<DirTreeCreator> m_DirTreeCreator;
+	std::weak_ptr<ContentManager> m_ContentManager;
+	std::weak_ptr<MergeArea> m_MergeArea;
+	std::weak_ptr<DirTreeCreator> m_DirTreeCreator;
 };
 
 class ModMerger;
+class FileCloneUtility;
 class MergeTask : public Command
 {
 public:
 
 	MergeTask(std::shared_ptr<ModMerger> modMerger,
 		std::shared_ptr<MergeArea> mergeArea,
-		std::shared_ptr<DirTreeCreator> dirTreeCreator)
+		std::shared_ptr<DirTreeCreator> dirTreeCreator,
+		std::shared_ptr<FileCloneUtility> cloneUtility,
+		const std::string& arctoolPath)
 		: m_ModMerger(modMerger)
 		, m_MergeArea(mergeArea)
 		, m_DirTreeCreator(dirTreeCreator)
+		, m_CloneUtility(cloneUtility)
+		, m_ARCToolPath(arctoolPath)
 	{
 	}
 
-	void SetThreadPool(const std::shared_ptr<powe::ThreadPool>& threadPool);
-
 	bool IsARCToolExist() const;
-	bool IsMergeReady() const;
+	bool IsFinished() const;
 
 	virtual void Execute();
 
@@ -59,21 +60,22 @@ public:
 
 private:
 
-	std::shared_ptr<ModMerger> m_ModMerger;
-	std::shared_ptr<DirTreeCreator> m_DirTreeCreator;
-	std::shared_ptr<MergeArea> m_MergeArea;
+	std::weak_ptr<ModMerger> m_ModMerger;
+	std::weak_ptr<DirTreeCreator> m_DirTreeCreator;
+	std::weak_ptr<MergeArea> m_MergeArea;
+	std::weak_ptr<FileCloneUtility> m_CloneUtility;
+	std::string m_ARCToolPath;
 };
+
 
 class MenuBar : public Widget
 {
 public:
 
 	MenuBar(std::unique_ptr<RefreshTask>&& refreshTask,
-			std::unique_ptr<MergeTask>&& mergeTask,
-		const std::shared_ptr<powe::ThreadPool>& threadPool)
+			std::unique_ptr<MergeTask>&& mergeTask)
 		: m_RefreshTask(std::move(refreshTask))
 		, m_MergeTask(std::move(mergeTask))
-		, m_ThreadPool(threadPool)
 	{
 	}
 
@@ -84,10 +86,12 @@ private:
 
 	std::unique_ptr<RefreshTask> m_RefreshTask;
 	std::unique_ptr<MergeTask> m_MergeTask;
-	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+
 	int m_ThreadCount{ int(std::thread::hardware_concurrency()) };
-	int m_NewThreadCount{ int(std::thread::hardware_concurrency()) };
+	int m_NewThreadCount{  int(std::thread::hardware_concurrency()) };
 
 	bool m_MergeButtonPressed{};
+	bool m_RefButtonPressed{};
+	bool m_ShowNonOverwriteMods{};
 };
 

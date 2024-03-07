@@ -24,13 +24,18 @@ void MergeArea::Draw()
 
 	if (m_MergeAreaVisible)
 	{
-		// Add additional vertical spacing using ImGui::Dummy()
+		auto modMerger = m_ModMerger.lock();
+		auto dirTreeCreator = m_DirTreeCreator.lock();
+		auto contentManager = m_ContentManager.lock();
+
+		if(!modMerger || !dirTreeCreator || !contentManager)
+			return;
 
 		ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing()));
 
 		ImGui::Text("Overwrite ARC Files");
 
-        if (!m_ModMerger->IsReadyToMerge())
+        if (!modMerger->IsReadyToMerge())
         {
             ImGui::SameLine(0.0f, 10.0f);
 
@@ -48,8 +53,8 @@ void MergeArea::Draw()
 
 		if (!m_RefreshModsContent)
 		{
-			m_ModsOverwriteOrderTemp = m_ContentManager->GetAllModsOverwriteOrder();
-			m_DirTreeTemp = &m_DirTreeCreator->GetDirTree();
+			m_ModsOverwriteOrderTemp = contentManager->GetAllModsOverwriteOrder();
+			m_DirTreeTemp = &dirTreeCreator->GetDirTree();
 			m_RefreshModsContent = true;
 		}
 
@@ -85,9 +90,6 @@ void MergeArea::Draw()
 			// TODO: Do all the list of selectables files here
 			for (auto& [fileName, path] : modsOverwriteOrder)
 			{
-				if(path.size() <= 1)
-					continue;
-
 				if (ImGui::Selectable(fileName.c_str(), m_SelectedMainFileName == fileName))
 				{
 					if (m_SelectedMainFileName == fileName)
@@ -145,7 +147,7 @@ void MergeArea::Draw()
 				for (size_t i = 0; i < modsOrder.size(); i++)
 				{
 					std::string modsName{ modsOrder[i] };
-					modsName = modsName.substr(m_ContentManager->GetModsFilePath().size() + 1); // + 1 for the '/'
+					modsName = modsName.substr(contentManager->GetModsFilePath().size() + 1); // + 1 for the '/'
 					modsName = modsName.substr(0, modsName.find_first_of("/\\"));
 					modsName = std::to_string(i) + "\t" + modsName;
 
@@ -161,15 +163,18 @@ void MergeArea::Draw()
 						}
 					}
 
+#ifdef _WIN32
 					if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 					{
 						ImGui::OpenPopup("##MainFilesPopupMenu");
 						m_PopupFileName = modsOrder[i];
 					}
+#endif
 
 					ImGui::Spacing();
 				}
 
+#ifdef _WIN32
 				if (ImGui::BeginPopup("##MainFilesPopupMenu"))
 				{
 					if (ImGui::MenuItem("Open in Explorer"))
@@ -181,6 +186,7 @@ void MergeArea::Draw()
 
 					ImGui::EndPopup();
 				}
+#endif
 			}
 
 			ImGui::EndChild();

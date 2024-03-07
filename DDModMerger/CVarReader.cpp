@@ -48,6 +48,7 @@ std::string CVarReader::ReadCVar(const std::string& cVar) const
 		std::cerr << e.what() << '\n';
 	}
 
+	return {};
 }
 
 bool CVarReader::CheckArgs() const

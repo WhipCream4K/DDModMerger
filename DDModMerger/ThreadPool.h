@@ -1,6 +1,7 @@
 #pragma once
 
 #include <future>
+#include <iostream>
 #include "Types.h"
 #include "thread_pool/thread_pool.h"
 
@@ -9,39 +10,52 @@ class ThreadPool
 {
 public:
 
+	using threadImpl = dp::thread_pool<std::function<void()>, std::jthread>;
+
 	static void Init(uint32_t threadCount)
 	{
-		static ThreadPool threadPool{};
-		auto& poolImpl{ threadPool.GetThreadPool() };
-		if (poolImpl->size() != threadCount)
+		auto& instance = ThreadPool::GetInstance();
+		auto& threadPool = instance.GetThreadPoolImpl();
+		if (threadPool->size() != threadCount)
 		{
-			poolImpl = std::make_shared<powe::ThreadPool>(threadCount);
+			threadPool = std::make_shared<threadImpl>(threadCount);
 		}
 	}
 
 	template<typename Func, typename... Args>
-	static std::future<void> Enqueue(Func&& func, Args&&... args)
+	static std::future<std::invoke_result_t<Func, Args...>> Enqueue(Func&& func, Args&&... args)
 	{
-		static ThreadPool threadPool{};
-		return threadPool.GetThreadPool()->enqueue(std::forward<Func>(func), std::forward<Args>(args)...);
+		auto& instance{ GetInstance() };
+		auto& threadPool{ instance.GetThreadPoolImpl() };
+		return threadPool->enqueue(std::forward<Func>(func), std::forward<Args>(args)...);
 	}
 
 	template<typename Func, typename... Args>
 	static void EnqueueDetach(Func&& func, Args&&... args)
 	{
-		static ThreadPool threadPool{};
-		threadPool.GetThreadPool()->enqueue_detach(std::forward<Func>(func), std::forward<Args>(args)...);
+		auto& instance{ GetInstance() };
+		auto& threadPool{ instance.GetThreadPoolImpl() };
+		threadPool->enqueue_detach(std::forward<Func>(func), std::forward<Args>(args)...);
 	}
 
 private:
 
 	ThreadPool()
-		: m_ThreadPool(std::make_shared<powe::ThreadPool>(std::thread::hardware_concurrency()))
+		: m_ThreadPool(std::make_shared<threadImpl>(std::thread::hardware_concurrency()))
 	{
 	}
 
-	std::shared_ptr<powe::ThreadPool>& GetThreadPool() { return m_ThreadPool; }
+	ThreadPool(const ThreadPool&) = delete;
+	ThreadPool& operator=(const ThreadPool&) = delete;
 
-	std::shared_ptr<powe::ThreadPool> m_ThreadPool;
+	static ThreadPool& GetInstance()
+	{
+		static ThreadPool threadPool{};
+		return threadPool;
+	}
+
+	std::shared_ptr<threadImpl>& GetThreadPoolImpl() { return m_ThreadPool; }
+
+	std::shared_ptr<threadImpl> m_ThreadPool;
 };
 

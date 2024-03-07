@@ -2,14 +2,13 @@
 
 #include "Widget.h"
 
-class Logger : public Widget
+class Logger
 {
 public:
 
-	Logger() = default;
 
-	void Draw() override;
+private:
 
-	~Logger() = default;
+
 };
 

@@ -396,6 +396,7 @@ FodyWeavers.xsd
 
 openssl-3
 TestFolder
+cache
 
 ARCtool.exe
 pc-dd.bat

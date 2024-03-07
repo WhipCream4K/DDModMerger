@@ -5,7 +5,7 @@
 
 #include "LFQueue.h"
 #include "Types.h"
-#include "thread_pool/thread_pool.h"
+#include "ThreadPool.h"
 
 namespace fs = std::filesystem;
 
@@ -22,7 +22,6 @@ struct FileSearchArgs
 	std::reference_wrapper<std::condition_variable> waitCV;
 
 	powe::LFQueue<powe::details::DirectoryTree> fileSearchResultQueue;
-	std::shared_ptr<powe::ThreadPool> threadPool;
 };
 
 void RecursiveFileSearchAsync(const std::string& source, std::string_view extension, std::shared_ptr<FileSearchArgs> args)
@@ -43,10 +42,10 @@ void RecursiveFileSearchAsync(const std::string& source, std::string_view extens
 			// For directories, we'll initiate an async call
 			args->activeTasks.get().fetch_add(1, std::memory_order_relaxed);
 
-			args->threadPool->enqueue_detach(
-				RecursiveFileSearchAsync,
-				entry.path().string(),
-				extension,
+			ThreadPool::EnqueueDetach(
+				RecursiveFileSearchAsync, 
+				entry.path().string(), 
+				extension, 
 				args);
 		}
 	}
@@ -56,22 +55,22 @@ void RecursiveFileSearchAsync(const std::string& source, std::string_view extens
 	args->waitCV.get().notify_one();
 }
 
-powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPath, std::string_view interestedExtension, std::shared_ptr<powe::ThreadPool> threadPool)
+powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPath, std::string_view interestedExtension)
 {
 	std::atomic_int32_t activeTasks{};
 	std::mutex activeTaskMutex;
 	std::condition_variable waitCV{};
 
 	std::shared_ptr<FileSearchArgs> fileSearchArgs{ std::make_shared<FileSearchArgs>(activeTasks,waitCV) };
-	fileSearchArgs->threadPool = threadPool;
+	//fileSearchArgs->threadPool = threadPool;
 
 	activeTasks.fetch_add(1, std::memory_order_relaxed);
 
 	const std::string& sourceRef{ searchFolderPath.data() };
 
-	threadPool->enqueue_detach(
+	ThreadPool::EnqueueDetach(
 		RecursiveFileSearchAsync,
-		sourceRef,
+		sourceRef, 
 		interestedExtension,
 		fileSearchArgs);
 
