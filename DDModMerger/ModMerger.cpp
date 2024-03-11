@@ -154,6 +154,15 @@ void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& so
 				continue;
 			}
 
+			// From testing there's multiple mismatch of localization files
+			// that is not part of the mod but it's a different version of the same file
+			// so we need to ignore them
+			const std::regex pattern("_(?:eng|fre|ger|ita|jpn|spa|zht).");
+			if (std::regex_search(comparisonPath.filename().string(), pattern))
+			{
+				continue;
+			}
+
 
 			auto hash1 = CalculateSHA256(entry.path());
 			auto hash2 = CalculateSHA256(comparisonPath);
@@ -452,45 +461,45 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 
 	for (const auto& [fileName, pathToMods] : overwriteOrder)
 	{
-		if (pathToMods.size() > 1)
-		{
+		//if (pathToMods.size() > 1)
+		//{
 			// copy the main file to the temp folder
-			if (const auto findItr = dirTree.find(fileName); findItr != dirTree.end())
-			{
-				mergeFutures.emplace_back(lcoalWaitThreads.enqueue([this,
-					filePath = std::string_view(findItr->second),
-					&pathToMods, &dirTree]() {
-						Merge(filePath, pathToMods, dirTree);
-					}));
-			}
+		if (const auto findItr = dirTree.find(fileName); findItr != dirTree.end())
+		{
+			mergeFutures.emplace_back(lcoalWaitThreads.enqueue([this,
+				filePath = std::string_view(findItr->second),
+				&pathToMods, &dirTree]() {
+					Merge(filePath, pathToMods, dirTree);
+				}));
 		}
+		//}
 	}
 
 
 	// TODO: Make a check box or button to copy files that is not merging to output folder
 
-	std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(),
-		[&dirTree,
-		output = std::string_view(m_OutputFolderPath),
-		searchFolder = std::string_view(m_SearchFolderPath),
-		modFolder = std::string_view(m_ModFolderPath)](const std::pair<std::string, std::vector<std::string>>& overwrite)
-		{
-			if (overwrite.second.size() <= 1)
-			{
-				if (const auto& findTarget = dirTree.find(overwrite.first); findTarget != dirTree.end())
-				{
-					auto& mainFilePath{ findTarget->second };
+	//std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(),
+	//	[&dirTree,
+	//	output = std::string_view(m_OutputFolderPath),
+	//	searchFolder = std::string_view(m_SearchFolderPath),
+	//	modFolder = std::string_view(m_ModFolderPath)](const std::pair<std::string, std::vector<std::string>>& overwrite)
+	//	{
+	//		if (overwrite.second.size() <= 1)
+	//		{
+	//			if (const auto& findTarget = dirTree.find(overwrite.first); findTarget != dirTree.end())
+	//			{
+	//				auto& mainFilePath{ findTarget->second };
 
-					fs::path outFilePath{ output };
-					outFilePath /= mainFilePath.substr(searchFolder.size() + 1); // get rid of top level folder
-					fs::create_directories(outFilePath.parent_path());
+	//				fs::path outFilePath{ output };
+	//				outFilePath /= mainFilePath.substr(searchFolder.size() + 1); // get rid of top level folder
+	//				fs::create_directories(outFilePath.parent_path());
 
-					const fs::path modCopySource{ overwrite.second.front() };
+	//				const fs::path modCopySource{ overwrite.second.front() };
 
-					fs::copy(modCopySource, outFilePath, fs::copy_options::overwrite_existing);
-				}
-			}
-		});
+	//				fs::copy(modCopySource, outFilePath, fs::copy_options::overwrite_existing);
+	//			}
+	//		}
+	//	});
 
 
 	for (auto& future : mergeFutures)
