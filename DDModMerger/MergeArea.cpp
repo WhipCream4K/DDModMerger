@@ -28,38 +28,49 @@ void MergeArea::Draw()
 		auto dirTreeCreator = m_DirTreeCreator.lock();
 		auto contentManager = m_ContentManager.lock();
 
-		if(!modMerger || !dirTreeCreator || !contentManager)
+		if (!modMerger || !dirTreeCreator || !contentManager)
 			return;
 
 		ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing()));
 
 		ImGui::Text("Overwrite ARC Files");
 
-        if (!modMerger->IsReadyToMerge())
-        {
-            ImGui::SameLine(0.0f, 10.0f);
+		if (!modMerger->IsReadyToMerge())
+		{
+			ImGui::SameLine(0.0f, 10.0f);
 
-            // Add animation here
-            static float time = 0.0f;
-            time += ImGui::GetIO().DeltaTime;
-            float alpha = (sinf(time * 2.0f) + 1.0f) * 0.5f;
-            ImVec4 textColor = ImVec4(1.0f, 1.0f, 1.0f, alpha);
-            ImGui::TextColored(textColor, "Merging...");
-
-        }
-
-		ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
-
+			// Add animation here
+			static float time = 0.0f;
+			time += ImGui::GetIO().DeltaTime;
+			float alpha = (sinf(time * 2.0f) + 1.0f) * 0.5f;
+			ImVec4 textColor = ImVec4(1.0f, 1.0f, 1.0f, alpha);
+			ImGui::TextColored(textColor, "Merging...");
+		}
 
 		if (!m_RefreshModsContent)
 		{
-			m_ModsOverwriteOrderTemp = contentManager->GetAllModsOverwriteOrder();
-			m_DirTreeTemp = &dirTreeCreator->GetDirTree();
+			if (!contentManager->IsFinished())
+				return;
+			else
+			{
+				m_ModsOverwriteOrderTemp = contentManager->GetAllModsOverwriteOrder();
+			}
+
+			if (!dirTreeCreator->IsFinished())
+				return;
+			else
+			{
+				m_DirTreeTemp = &dirTreeCreator->GetDirTree();
+			}
+
+			SortsOverwriteFileName(m_ModsOverwriteOrderTemp);
+
 			m_RefreshModsContent = true;
 		}
 
 		auto& modsOverwriteOrder{ m_ModsOverwriteOrderTemp };
 
+		ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
 
 		if (m_SelectedModFileIndex >= 0)
 		{
@@ -87,9 +98,28 @@ void MergeArea::Draw()
 		{
 			ImGui::PopStyleColor();
 
-			// TODO: Do all the list of selectables files here
-			for (auto& [fileName, path] : modsOverwriteOrder)
+			std::vector<std::string> overwriteFileNames;
+
+			if (ImGui::BeginTabBar("##ModsCountBar",
+				ImGuiTabBarFlags_FittingPolicyResizeDown | ImGuiTabBarFlags_FittingPolicyScroll))
 			{
+
+				for (const auto& [count, fileNames] : m_OverwriteCountList)
+				{
+					if (ImGui::BeginTabItem(std::to_string(count).c_str()))
+					{
+						overwriteFileNames = fileNames;
+						ImGui::EndTabItem();
+					}
+				}
+
+				ImGui::EndTabBar();
+			}
+
+			// TODO: Do all the list of selectables files here
+			for (const auto& fileName : overwriteFileNames)
+			{
+
 				if (ImGui::Selectable(fileName.c_str(), m_SelectedMainFileName == fileName))
 				{
 					if (m_SelectedMainFileName == fileName)
@@ -195,5 +225,15 @@ void MergeArea::Draw()
 	}
 
 }
+
+void MergeArea::SortsOverwriteFileName(const powe::details::ModsOverwriteOrder& modsOverwriteOrder)
+{
+	for (const auto& [fileName, path] : modsOverwriteOrder)
+	{
+		std::vector<std::string> modFiles;
+		m_OverwriteCountList[int(path.size())].emplace_back(fileName);
+	}
+}
+
 
 

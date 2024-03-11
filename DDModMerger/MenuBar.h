@@ -12,9 +12,9 @@ class RefreshTask : public Command
 public:
 
 	explicit RefreshTask(
-		std::shared_ptr<ContentManager> contentManager, 
-		std::shared_ptr<MergeArea> mergeArea,
-		std::shared_ptr<DirTreeCreator> dirTreeCreator)
+		const std::shared_ptr<ContentManager>& contentManager, 
+		const std::shared_ptr<MergeArea>& mergeArea,
+		const std::shared_ptr<DirTreeCreator>& dirTreeCreator)
 		: m_ContentManager(contentManager)
 		, m_MergeArea(mergeArea)
 		, m_DirTreeCreator(dirTreeCreator)
@@ -38,10 +38,11 @@ class MergeTask : public Command
 {
 public:
 
-	MergeTask(std::shared_ptr<ModMerger> modMerger,
-		std::shared_ptr<MergeArea> mergeArea,
-		std::shared_ptr<DirTreeCreator> dirTreeCreator,
-		std::shared_ptr<FileCloneUtility> cloneUtility,
+	MergeTask(
+		const std::shared_ptr<ModMerger>& modMerger,
+		const std::shared_ptr<MergeArea>& mergeArea,
+		const std::shared_ptr<DirTreeCreator>& dirTreeCreator,
+		const std::shared_ptr<FileCloneUtility>& cloneUtility,
 		const std::string& arctoolPath)
 		: m_ModMerger(modMerger)
 		, m_MergeArea(mergeArea)

@@ -183,6 +183,7 @@
     <ClCompile Include="FileCloneUtility.cpp" />
     <ClCompile Include="LFQueue.cpp" />
     <ClCompile Include="Logger.cpp" />
+    <ClCompile Include="LowFrequencyThreadPool.cpp" />
     <ClCompile Include="MenuBar.cpp" />
     <ClCompile Include="MergeArea.cpp" />
     <ClCompile Include="ModMerger.cpp" />
@@ -199,6 +200,7 @@
     <ClInclude Include="FileCloneUtility.h" />
     <ClInclude Include="LFQueue.h" />
     <ClInclude Include="Logger.h" />
+    <ClInclude Include="LowFrequencyThreadPool.h" />
     <ClInclude Include="MenuBar.h" />
     <ClInclude Include="MergeArea.h" />
     <ClInclude Include="ModMerger.h" />

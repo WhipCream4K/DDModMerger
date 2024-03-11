@@ -14,6 +14,7 @@
 #include "MenuBar.h"
 #include "MergeArea.h"
 #include "FileCloneUtility.h"
+#include "LowFrequencyThreadPool.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
@@ -93,6 +94,7 @@ int main(int argc, char* argv[])
 	// Initialize DDModManager Global Context Variables
 
 	ThreadPool::Init(std::thread::hardware_concurrency());
+	LowFrequencyThreadPool::Init(std::thread::hardware_concurrency() / 2);
 
 	std::shared_ptr<ContentManager> contentManager{ std::make_shared<ContentManager>(cvReader) };
 	std::shared_ptr<DirTreeCreator> dirTreeCreator{ std::make_shared<DirTreeCreator>(cvReader) };

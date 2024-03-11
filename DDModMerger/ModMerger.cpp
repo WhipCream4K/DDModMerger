@@ -13,10 +13,20 @@
 #include "EnvironmentVariables.h"
 #include "openssl/sha.h"
 #include "utils.h"
+#include "LowFrequencyThreadPool.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+
+#ifdef max
+#undef max
+#endif
+
+#ifdef min
+#undef min
+#endif
+
 #endif
 
 namespace fs = std::filesystem;
@@ -169,6 +179,43 @@ void RecursiveCompareDirAsync(std::string_view baseSource, const std::string& so
 	args->waitCV.get().notify_all();
 }
 
+template<typename T, typename U>
+inline std::future<std::vector<std::string>> CompareDirectoriesAsync(T&& sourcePath, U&& targetPath)
+{
+	auto compareCheck = [
+		lbaseSource = std::forward<T>(sourcePath),
+			lpathToTarget = std::forward<U>(targetPath)]() -> std::vector<std::string>
+		{
+			std::atomic<int> activeTasks{};
+			std::mutex activeTasksMutex;
+			std::condition_variable waitCV;
+
+			// Compare the directories
+			std::shared_ptr<CompareDirectoriesArgs> compareArgs{ std::make_shared<CompareDirectoriesArgs>(activeTasks,waitCV) };
+
+			const std::string sourcePath{ lbaseSource };
+
+			activeTasks.fetch_add(1, std::memory_order_relaxed);
+
+			ThreadPool::EnqueueDetach(
+				RecursiveCompareDirAsync,
+				std::string_view(lbaseSource),
+				sourcePath,
+				std::string_view(lpathToTarget),
+				compareArgs);
+
+			std::unique_lock lock(activeTasksMutex);
+			waitCV.wait(lock, [&activeTasks = std::as_const(activeTasks)]
+				{
+					return activeTasks.load(std::memory_order_relaxed) == 0;
+				});
+
+			return compareArgs->filesToMove;
+		};
+
+		return LowFrequencyThreadPool::Enqueue(compareCheck);
+}
+
 std::future<void> ModMerger::UnpackAsync(std::string_view sourcePath, std::string_view targetPath)
 {
 	std::shared_ptr<std::promise<void>> threadPromise{ std::make_shared<std::promise<void>>() };
@@ -213,13 +260,21 @@ std::future<void> ModMerger::MergeAsync(
 				// now we just go a list of files that we need to move to sourcePath
 				auto cleanFilesToMove{ PrepareForMerge(mainFilePath, tempFolder.string(), pathToMods) };
 
-				std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(),
-					[&tempFolder, &dirTree, this](const std::string& file)
-					{
-						std::string modName{ file.substr(tempFolder.string().size() + 1) }; // get rid of temp folder's name
-						modName = modName.substr(modName.find_first_of("/\\") + 1); // get rid of mod's name
-						fs::rename(file, (tempFolder / modName));
-					});
+				try
+				{
+					std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(),
+						[&tempFolder, &dirTree, this](const std::string& file)
+						{
+							std::string modName{ file.substr(tempFolder.string().size() + 1) }; // get rid of temp folder's name
+							modName = modName.substr(modName.find_first_of("/\\") + 1); // get rid of mod's name
+							fs::rename(file, (tempFolder / modName));
+						});
+				}
+				catch (const fs::filesystem_error& e)
+				{
+					std::cerr << "Error: " << e.what() << '\n';
+				}
+
 			}
 
 			// Repack
@@ -238,7 +293,7 @@ std::future<void> ModMerger::MergeAsync(
 		};
 
 
-	return std::async(std::launch::async, merge);
+	return LowFrequencyThreadPool::Enqueue(merge);
 }
 
 std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePath, std::string_view unpackPath, const std::vector<std::string>& modsPath)
@@ -269,13 +324,17 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 		{
 			// TODO: ARC Tool is inconsistent with the output folder name so mod folder will be name after index
 			std::string modName{ modsPath[i] };
-			modName = modName.substr(m_ModFolderPath.size() + 1, 10); // + 1 for the '/'
+			modName = modName.substr(m_ModFolderPath.size() + 1); // + 1 for the '/'
+			modName = modName.substr(0, modName.find_first_of("/\\"));
+			modName = modName.substr(0, 10); // limit the name to 10 characters
+
 			modName.erase(std::remove_if(std::execution::par_unseq,
 				modName.begin(), modName.end(), [](char c) { return std::isspace(c) || c == '.'; }), modName.end());
 
 			modsNames.emplace_back(modName);
 			UnpackBarrier(modsPath[i], (unpackFS / modName).string(), barrier);
 		}
+
 
 		barrier.arrive_and_wait();
 	}
@@ -286,10 +345,15 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 		std::vector<std::future<std::vector<std::string>>> compareFutures{};
 		compareFutures.reserve(modsPath.size());
 
+		dp::thread_pool<> localWaitThreads{ ThreadPool::Size() / 2 };
+
 		const fs::path unpackBaseSource{ unpackPath / mainFileFS.stem() };
+
+		std::barrier barrier{ uint32_t(modsPath.size() + 1) };
 
 		for (size_t i = 0; i < modsPath.size(); i++)
 		{
+
 			compareFutures.emplace_back(CompareDirectoriesAsync(
 				unpackBaseSource.string(),
 				(unpackFS / modsNames[i] / mainFileFS.stem()).string()));
@@ -309,7 +373,6 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 		for (const auto& file : modFiles) {
 			std::string filename = fs::path(file).filename().string();
 			// Insert file into the map if not already present; this respects priority due to the loop order
-			//uniqueFiles.insert(file);
 			uniqueFiles[filename] = file;
 		}
 	}
@@ -324,6 +387,58 @@ std::vector<std::string> ModMerger::PrepareForMerge(std::string_view mainFilePat
 
 }
 
+void ModMerger::Merge(
+	std::string_view mainFilePath,
+	const std::vector<std::string>& pathToMods,
+	const powe::details::DirectoryTree& dirTree)
+{
+	fs::path tempFolder{ "./mergeRoom" };
+
+	const fs::path mainFileFS{ mainFilePath };
+	const std::string mainFileName{ mainFileFS.stem().string() };
+
+	tempFolder /= mainFileName;
+
+	const fs::path mainUnpackFolder{ (tempFolder / mainFileName) };
+
+	{
+		// now we just go a list of files that we need to move to sourcePath
+		auto cleanFilesToMove{ PrepareForMerge(mainFilePath, tempFolder.string(), pathToMods) };
+
+		try
+		{
+			std::for_each(std::execution::par_unseq, cleanFilesToMove.begin(), cleanFilesToMove.end(),
+				[&tempFolder, &dirTree, this](const std::string& file)
+				{
+					std::string modName{ file.substr(tempFolder.string().size() + 1) }; // get rid of temp folder's name
+					modName = modName.substr(modName.find_first_of("/\\") + 1); // get rid of mod's name
+					fs::rename(file, (tempFolder / modName));
+				});
+		}
+		catch (const fs::filesystem_error& e)
+		{
+			SetConsoleColor(FOREGROUND_RED); // Set text color to red
+			std::cerr << "Error: " << e.what() << '\n';
+			SetConsoleColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); // Reset text color to default
+		}
+
+	}
+
+	// Repack
+	CallARCTool(mainUnpackFolder, m_ARCToolScriptPath);
+
+	// move the main file to respective folder
+	// should be out/nativePC/rom
+	{
+		fs::path outFilePath{ m_OutputFolderPath };
+		outFilePath /= mainFilePath.substr(m_SearchFolderPath.size() + 1); // get rid of top level folder
+		fs::create_directories(outFilePath.parent_path());
+		fs::rename((tempFolder / mainFileFS.filename()), outFilePath);
+	}
+
+	fs::remove_all(tempFolder);
+}
+
 
 void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, const powe::details::ModsOverwriteOrder& overwriteOrder)
 {
@@ -332,6 +447,9 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 
 	std::vector<std::future<void>> mergeFutures{};
 
+	dp::thread_pool lcoalWaitThreads{ ThreadPool::Size() / 2 };
+
+
 	for (const auto& [fileName, pathToMods] : overwriteOrder)
 	{
 		if (pathToMods.size() > 1)
@@ -339,14 +457,46 @@ void ModMerger::MergeContentIntern(const powe::details::DirectoryTree& dirTree, 
 			// copy the main file to the temp folder
 			if (const auto findItr = dirTree.find(fileName); findItr != dirTree.end())
 			{
-				mergeFutures.emplace_back(MergeAsync(findItr->second, pathToMods, dirTree));
+				mergeFutures.emplace_back(lcoalWaitThreads.enqueue([this,
+					filePath = std::string_view(findItr->second),
+					&pathToMods, &dirTree]() {
+						Merge(filePath, pathToMods, dirTree);
+					}));
 			}
 		}
 	}
 
+
+	// TODO: Make a check box or button to copy files that is not merging to output folder
+
+	std::for_each(std::execution::par_unseq, overwriteOrder.begin(), overwriteOrder.end(),
+		[&dirTree,
+		output = std::string_view(m_OutputFolderPath),
+		searchFolder = std::string_view(m_SearchFolderPath),
+		modFolder = std::string_view(m_ModFolderPath)](const std::pair<std::string, std::vector<std::string>>& overwrite)
+		{
+			if (overwrite.second.size() <= 1)
+			{
+				if (const auto& findTarget = dirTree.find(overwrite.first); findTarget != dirTree.end())
+				{
+					auto& mainFilePath{ findTarget->second };
+
+					fs::path outFilePath{ output };
+					outFilePath /= mainFilePath.substr(searchFolder.size() + 1); // get rid of top level folder
+					fs::create_directories(outFilePath.parent_path());
+
+					const fs::path modCopySource{ overwrite.second.front() };
+
+					fs::copy(modCopySource, outFilePath, fs::copy_options::overwrite_existing);
+				}
+			}
+		});
+
+
 	for (auto& future : mergeFutures)
 	{
-		future.get();
+		if (future.valid())
+			future.get();
 	}
 
 	m_ActiveTasks.fetch_sub(1, std::memory_order_relaxed);
@@ -419,8 +569,6 @@ void ModMerger::MergeContentAsync(const powe::details::DirectoryTree& dirTree, c
 		// Single thread it's fine
 		m_ActiveTasks.fetch_add(1, std::memory_order_relaxed);
 		std::jthread(merge).detach();
-
-
 	}
 	else
 	{

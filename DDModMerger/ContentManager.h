@@ -14,6 +14,7 @@ public:
 	void LoadModsContentAsync();
 	const powe::details::ModsOverwriteOrder& GetAllModsOverwriteOrder();
 
+	bool IsFinished();
 	std::string_view GetModsFilePath() const { return m_ModsFilePath; }
 
 private:

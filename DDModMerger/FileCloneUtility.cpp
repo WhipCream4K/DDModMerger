@@ -12,15 +12,16 @@ constexpr char BackupFolder[] = "./backup";
 
 void FileCloneUtility::BackupMainFile(const powe::details::DirectoryTree& dirTree, const std::vector<std::string>& modsFiles)
 {
-	std::for_each(std::execution::par_unseq, modsFiles.begin(), modsFiles.end(), [&dirTree,
+	std::for_each(modsFiles.begin(), modsFiles.end(), [&dirTree,
 		searchFolder = std::string_view(m_SearchFolderPath)](const std::string& value)
 		{
-			if (auto pathToFile = dirTree.find(value); pathToFile != dirTree.end())
+			const fs::path fileName{value};
+			if (auto pathToFile = dirTree.find(fileName.stem().string()); pathToFile != dirTree.end())
 			{
 				const auto& path{ pathToFile->second };
 
 				const fs::path fileAfterTopLevelFolder{ path.substr(searchFolder.size() + 1) }; // get rid of parent folder
-				const std::string pathToBackupFolder{ fs::path(BackupFolder / fileAfterTopLevelFolder).string() };
+				const std::string pathToBackupFolder{ fs::path(BackupFolder / fileAfterTopLevelFolder.parent_path()).string() };
 				MakeBackup(path, pathToBackupFolder);
 			}
 		});

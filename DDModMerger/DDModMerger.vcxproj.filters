@@ -57,6 +57,9 @@
     <ClCompile Include="FileCloneUtility.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="LowFrequencyThreadPool.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ContentManager.h">
@@ -105,6 +108,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="FileCloneUtility.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LowFrequencyThreadPool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

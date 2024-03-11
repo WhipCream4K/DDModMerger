@@ -22,6 +22,8 @@ struct FileSearchArgs
 	std::reference_wrapper<std::condition_variable> waitCV;
 
 	powe::LFQueue<powe::details::DirectoryTree> fileSearchResultQueue;
+	powe::details::DirectoryTree fileSearchResult;
+	std::mutex fileSearchResultMutex;
 };
 
 void RecursiveFileSearchAsync(const std::string& source, std::string_view extension, std::shared_ptr<FileSearchArgs> args)
@@ -32,9 +34,13 @@ void RecursiveFileSearchAsync(const std::string& source, std::string_view extens
 		if (entry.is_regular_file() && entry.path().extension() == extension)
 		{
 			const std::string filename{ entry.path().stem().string() };
-			std::string filePath{ entry.path().string() };
-			std::replace(std::execution::par_unseq, filePath.begin(), filePath.end(), '\\', '/');
+			const std::string filePath{ entry.path().string() };
+			//std::replace( filePath.begin(), filePath.end(), '\\', '/');
 
+			//{
+			//	std::scoped_lock lock(args->fileSearchResultMutex);
+			//	args->fileSearchResult[filename] = filePath;
+			//}
 			fileMap[filename] = filePath;
 		}
 		else if (entry.is_directory()) {
@@ -43,16 +49,16 @@ void RecursiveFileSearchAsync(const std::string& source, std::string_view extens
 			args->activeTasks.get().fetch_add(1, std::memory_order_relaxed);
 
 			ThreadPool::EnqueueDetach(
-				RecursiveFileSearchAsync, 
-				entry.path().string(), 
-				extension, 
+				RecursiveFileSearchAsync,
+				entry.path().string(),
+				extension,
 				args);
 		}
 	}
 
 	args->activeTasks.get().fetch_sub(1, std::memory_order_relaxed);
 	args->fileSearchResultQueue.Push(std::move(fileMap));
-	args->waitCV.get().notify_one();
+	args->waitCV.get().notify_all();
 }
 
 powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPath, std::string_view interestedExtension)
@@ -62,17 +68,19 @@ powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPa
 	std::condition_variable waitCV{};
 
 	std::shared_ptr<FileSearchArgs> fileSearchArgs{ std::make_shared<FileSearchArgs>(activeTasks,waitCV) };
-	//fileSearchArgs->threadPool = threadPool;
 
 	activeTasks.fetch_add(1, std::memory_order_relaxed);
 
 	const std::string& sourceRef{ searchFolderPath.data() };
 
-	ThreadPool::EnqueueDetach(
-		RecursiveFileSearchAsync,
-		sourceRef, 
-		interestedExtension,
-		fileSearchArgs);
+	//std::async(std::launch::async,RecursiveFileSearchAsync, sourceRef, interestedExtension, fileSearchArgs);
+	std::jthread(RecursiveFileSearchAsync, sourceRef, interestedExtension, fileSearchArgs).detach();
+
+	//ThreadPool::EnqueueDetach(
+	//	RecursiveFileSearchAsync,
+	//	sourceRef,
+	//	interestedExtension,
+	//	fileSearchArgs);
 
 	// Wait for all of threads finish works
 	std::unique_lock lock(activeTaskMutex);
@@ -83,6 +91,7 @@ powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPa
 
 	powe::details::DirectoryTree outFileMap;
 
+
 	while (!fileSearchArgs->fileSearchResultQueue.Empty())
 	{
 		auto fileMap = fileSearchArgs->fileSearchResultQueue.Front();
@@ -91,13 +100,19 @@ powe::details::DirectoryTree RecursiveFileSearch(std::string_view searchFolderPa
 		fileSearchArgs->fileSearchResultQueue.Pop();
 	}
 
+	//for (const auto& [fileName, path] : fileSearchArgs->fileSearchResult)
+	//{
+	//	//std::replace(std::execution::par_unseq, outFileMap[fileName].begin(), outFileMap[fileName].end(), '\\', '/');
+	//	std::cerr << "File: " << fileName << " Path: " << path << '\n';
+	//}
+
 	return outFileMap;
 }
 
-std::string GetModName(std::string_view modsParentPath, std::string_view modPath)
+std::string GetModName(std::string_view modsFodlerPath, std::string_view modPath)
 {
 	std::string modsName{ modPath };
-	modsName = modsName.substr(modsParentPath.size() + 1); // + 1 for the '/'
+	modsName = modsName.substr(modsFodlerPath.size() + 1); // + 1 for the '/'
 	modsName = modsName.substr(0, modsName.find_first_of("/\\"));
 	return modsName;
 }

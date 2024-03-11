@@ -1,12 +1,14 @@
 #pragma once
-
-#include <future>
-#include <iostream>
 #include "Types.h"
 #include "thread_pool/thread_pool.h"
 
+#include <barrier>
 
-class ThreadPool
+/// <summary>
+/// This implementation of thread pool is loosely way to implement dynamic resizing thread pool
+/// Don't follow this meothod for professional use
+/// </summary>
+class LowFrequencyThreadPool
 {
 public:
 
@@ -14,7 +16,7 @@ public:
 
 	static void Init(uint32_t threadCount)
 	{
-		auto& instance = ThreadPool::GetInstance();
+		auto& instance = LowFrequencyThreadPool::GetInstance();
 		auto& threadPool = instance.GetThreadPoolImpl();
 		if (threadPool->size() != threadCount)
 		{
@@ -26,12 +28,6 @@ public:
 	{
 		auto& instance{ GetInstance() };
 		return static_cast<uint32_t>(instance.GetThreadPoolImpl()->size());
-	}
-	
-	template<typename T>
-	static std::vector<std::future<T>> CreateWaitFutures()
-	{
-		return std::vector<std::future<T>>(Size() / 2);
 	}
 
 	template<typename Func, typename... Args>
@@ -52,17 +48,17 @@ public:
 
 private:
 
-	ThreadPool()
+	LowFrequencyThreadPool()
 		: m_ThreadPool(std::make_shared<threadImpl>(std::thread::hardware_concurrency()))
 	{
 	}
 
-	ThreadPool(const ThreadPool&) = delete;
-	ThreadPool& operator=(const ThreadPool&) = delete;
+	LowFrequencyThreadPool(const LowFrequencyThreadPool&) = delete;
+	LowFrequencyThreadPool& operator=(const LowFrequencyThreadPool&) = delete;
 
-	static ThreadPool& GetInstance()
+	static LowFrequencyThreadPool& GetInstance()
 	{
-		static ThreadPool threadPool{};
+		static LowFrequencyThreadPool threadPool{};
 		return threadPool;
 	}
 

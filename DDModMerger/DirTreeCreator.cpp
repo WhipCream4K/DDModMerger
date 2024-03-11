@@ -58,14 +58,10 @@ DirTreeCreator::DirTreeCreator(const CVarReader& cVarReader)
 	m_OutputFilePath = cVarReader.ReadCVar("-out");
 
 	const fs::path searchFolderPath{ m_SearchFolderPath };
-	if(!fs::exists(searchFolderPath / DEFAULT_DD_TOPLEVEL_FOLDER))
+	if (!fs::exists(searchFolderPath / DEFAULT_DD_TOPLEVEL_FOLDER))
 	{
 		throw std::runtime_error("Error: -path should be a subfolder of " + std::string(DEFAULT_DD_TOPLEVEL_FOLDER));
 	}
-
-	//if (searchFolderPath.string().find(DEFAULT_DD_TOPLEVEL_FOLDER) == std::string::npos)
-	//{
-	//}
 
 	// check all variables if they are empty then throw an exception
 	if (m_SearchFolderPath.empty() || m_InterestedExtension.empty() || m_OutputFilePath.empty()) {
@@ -104,25 +100,34 @@ void DirTreeCreator::CreateDirTreeAsync(bool measureTime)
 				return fileMap;
 			};
 
-		m_CreateDirTreeFuture = ThreadPool::Enqueue(createDirTree);
+		m_CreateDirTreeFuture = std::async(std::launch::async, createDirTree);
 	}
+	else
+	{
+		auto createDirTree = [this]() -> powe::details::DirectoryTree
+			{
+				return CreateDirTreeIntern();
+			};
 
-	auto createDirTree = [this]() -> powe::details::DirectoryTree
-		{
-			return CreateDirTreeIntern();
-		};
-
-	m_CreateDirTreeFuture = ThreadPool::Enqueue(createDirTree);
+		m_CreateDirTreeFuture = std::async(std::launch::async, createDirTree);
+	}
 
 }
 
 const powe::details::DirectoryTree& DirTreeCreator::GetDirTree()
 {
-	if (m_CreateDirTreeFuture.valid())
+	return m_DirTree;
+}
+
+bool DirTreeCreator::IsFinished()
+{
+	if (m_CreateDirTreeFuture.valid() && m_CreateDirTreeFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready || !m_DirTree.empty())
 	{
 		m_DirTree = m_CreateDirTreeFuture.get();
+		return true;
 	}
-	return m_DirTree;
+
+	return !m_DirTree.empty();
 }
 
 powe::details::DirectoryTree DirTreeCreator::CreateDirTreeIntern() const
@@ -132,6 +137,7 @@ powe::details::DirectoryTree DirTreeCreator::CreateDirTreeIntern() const
 
 	// Check if the output file already exists
 	if (fs::exists(outputPath)) {
+
 
 		auto tempFileMap = ReadJSONFile(outputPath.string());
 
@@ -143,19 +149,13 @@ powe::details::DirectoryTree DirTreeCreator::CreateDirTreeIntern() const
 		return tempFileMap;
 	}
 
-	fs::path searchFolder{m_SearchFolderPath};
+	fs::path searchFolder{ m_SearchFolderPath };
 	searchFolder /= DEFAULT_DD_TOPLEVEL_FOLDER;
 
 	auto outFileMap{ RecursiveFileSearch(searchFolder.string() , m_InterestedExtension) };
 
+	fs::create_directories(outputPath.parent_path());
 	std::ofstream outputFile(outputPath);
-
-	if (!outputFile.is_open())
-	{
-		fs::create_directories(outputPath.parent_path());
-		if (!outputFile.is_open())
-			throw std::runtime_error("Error: Failed to open file: " + outputPath.string());
-	}
 
 	try
 	{

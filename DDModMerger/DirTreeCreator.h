@@ -16,8 +16,9 @@ public:
 
 	powe::details::DirectoryTree CreateDirTree(bool measureTime = true) const;
 	void CreateDirTreeAsync(bool measureTime = true);
-
 	const powe::details::DirectoryTree& GetDirTree();
+	bool IsFinished();
+
 
 private:
 
